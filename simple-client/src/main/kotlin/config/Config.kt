@@ -31,40 +31,52 @@ data class Config (
         )
     
         private fun readURI(): URI {
-             return System.getenv(ENV_SERVER_URL)
-                 ?.let { URI.create(it) }
-                 ?: throw IllegalArgumentException("Server URL is missed")
+            val serverUrlString = System.getenv(ENV_SERVER_URL)
+            require(!serverUrlString.isNullOrBlank())  {
+                "Server URL is missed"
+            }
+
+            return URI.create(serverUrlString)
         }
 
         private fun readInterval(): Duration {
-            return System.getenv(ENV_INTERVAL)
-                ?.let { val intervalDuration = Duration.parse(it)
-                    require(intervalDuration >= MINIMUM_INTERVAL) {
-                        "Interval must be at least $MINIMUM_INTERVAL "
-                    }
-                    intervalDuration
-                }
-                ?: throw IllegalArgumentException("Interval is missed")
+            val intervalString = System.getenv(ENV_INTERVAL)
+            require(!intervalString.isNullOrBlank()) {
+                "The interval is missed"
+            }
+
+            val intervalDuration = Duration.parse(intervalString)
+            require(intervalDuration >= MINIMUM_INTERVAL) {
+                "Interval must be at least $MINIMUM_INTERVAL"
+            }
+
+            return intervalDuration
         }
 
         private fun readConnectTimeout(): Duration {
-            return System.getenv(ENV_CONNECT_TIMEOUT)
-                ?.let { Duration.parse(it) }
-                ?: throw IllegalArgumentException("connectTimeout is missed")
+            val connectTimeoutString = System.getenv(ENV_CONNECT_TIMEOUT)
+            require(!connectTimeoutString.isNullOrBlank()) {
+                "connectTimeout is missed"
+            }
+
+            return Duration.parse(connectTimeoutString)
         }
 
         private fun readRequestTimeout(): Duration {
-            return System.getenv(ENV_REQUEST_TIMEOUT)
-                ?.let { Duration.parse(it) }
-                ?: throw IllegalArgumentException("requestTimeout is missed")
+            val requestTimeout = System.getenv(ENV_REQUEST_TIMEOUT)
+            require(!requestTimeout.isNullOrBlank()) {
+                "requestTimeout is missed"
+            }
 
+            return Duration.parse(requestTimeout)
         }
 
         private fun readDeviceId(): String {
             val deviceId = System.getenv(ENV_DEVICE_ID)
-            if (deviceId.isNullOrBlank()) {
-                throw IllegalArgumentException("Device ID is missed")
+            require(!deviceId.isNullOrBlank()) {
+                "deviceId is missed"
             }
+
             return deviceId
         }
     }
