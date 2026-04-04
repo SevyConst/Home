@@ -4,7 +4,6 @@ import java.net.URI
 import kotlin.time.Duration
 import kotlin.time.Duration.Companion.seconds
 
-
 data class Config (
     val serverUri: URI,
     val interval: Duration,

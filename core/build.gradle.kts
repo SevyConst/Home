@@ -11,12 +11,7 @@ repositories {
 }
 
 dependencies {
-    implementation(project(":core"))
-
     testImplementation(kotlin("test"))
-    implementation(libs.kotlin.logging)
-    implementation(libs.log4j.core)
-    implementation(libs.log4j.slf4j)
     implementation(libs.kotlinxSerialization)
 }
 
