@@ -12,7 +12,6 @@ data class Config (
     val deviceId: String
 ) {
     companion object {
-
         private const val ENV_SERVER_URL: String = "SERVER_URL"
         private const val ENV_INTERVAL: String = "INTERVAL"
         private const val ENV_CONNECT_TIMEOUT: String = "CONNECT_TIMEOUT"
@@ -22,17 +21,17 @@ data class Config (
         val MINIMUM_INTERVAL: Duration = 30.seconds
 
         fun readEnv(): Config = Config(
-                readURI(),
-                readInterval(),
-                readConnectTimeout(),
-                readRequestTimeout(),
-                readDeviceId()
+                serverUri = readURI(),
+                interval = readInterval(),
+                connectTimeout = readConnectTimeout(),
+                requestTimeout = readRequestTimeout(),
+                deviceId = readDeviceId()
         )
     
         private fun readURI(): URI {
             val serverUrlString = System.getenv(ENV_SERVER_URL)
             require(!serverUrlString.isNullOrBlank())  {
-                "Server URL is missed"
+                "Server URL '$ENV_SERVER_URL' is missed"
             }
 
             return URI.create(serverUrlString)
@@ -41,7 +40,7 @@ data class Config (
         private fun readInterval(): Duration {
             val intervalString = System.getenv(ENV_INTERVAL)
             require(!intervalString.isNullOrBlank()) {
-                "The interval is missed"
+                "The interval '$ENV_INTERVAL' is missed"
             }
 
             val intervalDuration = Duration.parse(intervalString)
@@ -55,7 +54,7 @@ data class Config (
         private fun readConnectTimeout(): Duration {
             val connectTimeoutString = System.getenv(ENV_CONNECT_TIMEOUT)
             require(!connectTimeoutString.isNullOrBlank()) {
-                "connectTimeout is missed"
+                "connectTimeout '$ENV_CONNECT_TIMEOUT' is missed"
             }
 
             return Duration.parse(connectTimeoutString)
@@ -64,7 +63,7 @@ data class Config (
         private fun readRequestTimeout(): Duration {
             val requestTimeout = System.getenv(ENV_REQUEST_TIMEOUT)
             require(!requestTimeout.isNullOrBlank()) {
-                "requestTimeout is missed"
+                "requestTimeout '$ENV_REQUEST_TIMEOUT' is missed"
             }
 
             return Duration.parse(requestTimeout)
@@ -73,7 +72,7 @@ data class Config (
         private fun readDeviceId(): String {
             val deviceId = System.getenv(ENV_DEVICE_ID)
             require(!deviceId.isNullOrBlank()) {
-                "deviceId is missed"
+                "deviceId '$ENV_DEVICE_ID' is missed"
             }
 
             return deviceId

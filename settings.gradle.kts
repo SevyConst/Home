@@ -25,3 +25,4 @@ include(":utils")
 rootProject.name = "home"
 include("simple-client")
 include("core")
+include("client-with-db")

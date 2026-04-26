@@ -22,9 +22,9 @@ fun main() {
 
     val httpSender = HttpSender(config.serverUri, config.connectTimeout, config.requestTimeout)
 
-    sendStartMessage(config.deviceId, httpSender)
+    processStartMessage(config.deviceId, httpSender)
     scheduler.scheduleWithFixedDelay(
-        SenderRunnable(1, config.deviceId, httpSender),
+        PeriodicTask(1, config.deviceId, httpSender),
         config.interval.inWholeSeconds,
         config.interval.inWholeSeconds,
         TimeUnit.SECONDS
@@ -32,7 +32,7 @@ fun main() {
 
 }
 
-fun sendStartMessage(deviceId: String, httpSender: HttpSender) {
+fun processStartMessage(deviceId: String, httpSender: HttpSender) {
     val event = Event(0, EventType.START, LocalDateTime.now().format(dateTimeFormatter))
     httpSender.send(EventRequest(listOf(event), deviceId))
 }

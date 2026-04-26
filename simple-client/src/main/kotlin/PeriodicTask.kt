@@ -5,7 +5,7 @@ import model.EventRequest
 import model.EventType
 import java.time.LocalDateTime
 
-class SenderRunnable(
+class PeriodicTask(
     private var messageId: Long,
     private val deviceId: String,
     private val httpSender: HttpSender): Runnable {
