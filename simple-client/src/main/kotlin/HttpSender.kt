@@ -3,7 +3,6 @@ package org.example
 import io.github.oshai.kotlinlogging.KotlinLogging
 import kotlinx.serialization.json.Json
 import model.EventRequest
-import java.io.IOException
 import java.net.URI
 import java.net.http.HttpClient
 import java.net.http.HttpRequest
@@ -23,7 +22,7 @@ class HttpSender(
         .connectTimeout(connectTimeout.toJavaDuration())
         .build()
 
-    fun send(eventRequest: EventRequest) {
+    fun send(eventRequest: EventRequest): Boolean {
         val json = Json.encodeToString(eventRequest)
         logger.info { "Sending $json" }
 
@@ -36,20 +35,18 @@ class HttpSender(
 
         val response = try {
             httpClient.send(request, HttpResponse.BodyHandlers.ofString())
-        } catch (e: IOException) {
+        } catch (e: Exception) {
             logger.error(e) { "Failed to send $json" }
-            return
-        } catch (e: InterruptedException) {
-            logger.error(e) { "Failed to send $json" }
-            return
+            return false
         }
 
         if (response.statusCode() != 200) {
             logger.error { "Http response code: ${response.statusCode()}, response body: ${response.body()}" }
-            return
+            return false
         }
 
         logger.info { "Http response code: ${response.statusCode()}, response body: ${response.body()}" }
+        return true
     }
 
 }

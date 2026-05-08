@@ -2,6 +2,7 @@ package org.example.db
 
 import io.github.oshai.kotlinlogging.KotlinLogging
 import model.Event
+import model.EventType
 import java.io.File
 import java.io.IOException
 import java.sql.Connection
@@ -13,7 +14,7 @@ private val logger = KotlinLogging.logger {}
 
 private const val CREATE_TABLE = """
     CREATE TABLE IF NOT EXISTS events (
-    id BIGINTEGER PRIMARY KEY,
+    id INTEGER PRIMARY KEY,
     event_type TEXT NOT NULL,
     is_received INTEGER NOT NULL,
     time TEXT NOT NULL
@@ -22,11 +23,14 @@ private const val CREATE_TABLE = """
 private const val INSERT_EVENT =
     "INSERT INTO events (id, event_type, is_received, time) VALUES (?, ?, ?, ?)"
 private const val READ_MAX_ID = "SELECT max(id) as max_id from events"
+private const val READ_TAIL_DESC =
+    "SELECT id, event_type, time, is_received FROM events ORDER BY id DESC LIMIT ?"
+private const val MARK_RECEIVED = "UPDATE events SET is_received = 1 WHERE id IN (%s)"
 
 private const val SQLITE = "jdbc:sqlite:"
 private const val FILE_DB_EXTENSION = ".db"
 
-class Db(
+class EventDb(
     private val pathWithoutFileName: String,
     private val maxUnreceivedEvents: Int,
     private val numberOfFiles: Int,
@@ -123,12 +127,12 @@ class Db(
     }
 
     fun writeEvent(event: Event, yearMonth: YearMonth) {
-        if (!currentYearMonth.equals(yearMonth)) {
-            if (currentYearMonth.plusMonths(1).equals(yearMonth)) {
+        if (currentYearMonth != yearMonth) {
+            if (currentYearMonth.plusMonths(1) == yearMonth) {
                 processNewMonth(yearMonth)
             } else {
-                val exception = IllegalArgumentException("wring date")
-                logger.error { exception }
+                val exception = IllegalArgumentException("wrong date")
+                logger.error(exception) {}
                 throw exception
             }
         }
@@ -182,6 +186,83 @@ class Db(
         if (!file.delete()) {
             // TODO: send to telegram
             throw IOException("Failed to delete file: $file")
+        }
+    }
+
+    fun readUnreceivedTail(collected: MutableList<Event>): Boolean {
+
+        val stop = readUnreceivedFromConnection(currentMonthConnection, maxUnreceivedEvents, collected)
+
+        var isPreviousConnectionUsed = false
+        val previousConnection = previousMonthConnection
+        if (!stop && previousConnection != null) {
+            readUnreceivedFromConnection(previousConnection, maxUnreceivedEvents - collected.size, collected)
+            isPreviousConnectionUsed = true
+        }
+
+        return isPreviousConnectionUsed
+    }
+
+    // Returns true to stop walking older files: either an already-received row was hit
+    // or the limit was reached on this connection.
+    private fun readUnreceivedFromConnection(
+        connection: Connection,
+        limit: Int,
+        collector: MutableList<Event>
+    ): Boolean {
+        try {
+            connection.prepareStatement(READ_TAIL_DESC).use { statement ->
+                statement.setInt(1, limit)
+                val resultSet = statement.executeQuery()
+                var rowCount = 0
+                while (resultSet.next()) {
+                    rowCount++
+                    if (resultSet.getInt("is_received") == 1) {
+                        return true
+                    }
+                    collector.add(
+                        Event(
+                            id = resultSet.getLong("id"),
+                            eventType = EventType.valueOf(resultSet.getString("event_type")),
+                            time = resultSet.getString("time")
+                        )
+                    )
+                }
+                return rowCount >= limit
+            }
+        } catch (e: SQLException) {
+            // TODO: send to telegram
+            logger.error(e) {}
+            throw e
+        }
+    }
+
+    fun markReceived(ids: List<Long>, previousConnectionUsed: Boolean) {
+        if (ids.isEmpty()) return
+
+        val placeholders = ids.joinToString(",") { "?" }
+        val sql = MARK_RECEIVED.format(placeholders)
+
+        markReceivedOnConnection(currentMonthConnection, sql, ids)
+
+        // TODO: send event to telegram if null
+        if (previousConnectionUsed) {
+            previousMonthConnection?.let { markReceivedOnConnection(it, sql, ids) }
+        }
+    }
+
+    private fun markReceivedOnConnection(connection: Connection, sql: String, ids: List<Long>) {
+        try {
+            connection.prepareStatement(sql).use { statement ->
+                ids.forEachIndexed { index, id ->
+                    statement.setLong(index + 1, id)
+                }
+                statement.executeUpdate()
+            }
+        } catch (e: SQLException) {
+            // TODO: send to telegram
+            logger.error(e) {}
+            throw e
         }
     }
 

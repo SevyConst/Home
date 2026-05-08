@@ -3,7 +3,7 @@ package org.example
 import model.Event
 import model.EventRequest
 import model.EventType
-import org.example.db.Db
+import org.example.db.EventDb
 import java.time.LocalDateTime
 import java.time.YearMonth
 
@@ -11,20 +11,34 @@ class PeriodicTask(
     private var messageId: Long,
     private val deviceId: String,
     private val httpSender: HttpSender,
-    private val db: Db): Runnable {
+    private val eventDb: EventDb
+): Runnable {
 
     override fun run() {
         val now = LocalDateTime.now()
+        val event = Event(messageId++, EventType.PING, now.format(dateTimeFormatter))
+        processEvent(event, YearMonth.of(now.year, now.monthValue), eventDb, deviceId, httpSender)
+    }
+}
 
-        val event = Event(
-            messageId++,
-            EventType.PING,
-            now.format(dateTimeFormatter)
-        )
+fun processEvent(
+    event: Event,
+    yearMonth: YearMonth,
+    eventDb: EventDb,
+    deviceId: String,
+    httpSender: HttpSender
+) {
+    eventDb.writeEvent(event, yearMonth)
 
-        db.writeEvent(event, YearMonth.of(now.year, now.monthValue))
+    val collected = mutableListOf<Event>()
+    val isPreviousConnectionUsed = eventDb.readUnreceivedTail(collected)
+    if (collected.isEmpty()) {
+        return
+    }
 
-        httpSender.send(EventRequest(listOf(event), deviceId))
-
+    collected.reverse()
+    val sent = httpSender.send(EventRequest(collected, deviceId))
+    if (sent) {
+        eventDb.markReceived(collected.map { it.id }, isPreviousConnectionUsed)
     }
 }

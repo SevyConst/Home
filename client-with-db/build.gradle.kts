@@ -20,6 +20,7 @@ dependencies {
 
     testImplementation(kotlin("test"))
     testImplementation(libs.jimfs)
+    testImplementation(libs.mockito.kotlin)
 }
 
 kotlin {
