@@ -47,7 +47,7 @@ class EventDbTest {
         )
 
         eventDb.writeEvent(
-            Event(100, EventType.PING, LocalDateTime.now().format(dateTimeFormatter)),
+            Event(100, EventType.PING, LocalDateTime.now().format(dateTimeFormatter), null),
             YearMonth.of(2026, 5)
         )
 
@@ -64,12 +64,12 @@ class EventDbTest {
         )
 
         eventDb.writeEvent(
-            Event(100, EventType.PING, LocalDateTime.now().format(dateTimeFormatter)),
+            Event(100, EventType.PING, LocalDateTime.now().format(dateTimeFormatter), null),
             YearMonth.of(2026, 5)
         )
 
         eventDb.writeEvent(
-            Event(101, EventType.PING, LocalDateTime.now().format(dateTimeFormatter)),
+            Event(101, EventType.PING, LocalDateTime.now().format(dateTimeFormatter), null),
             YearMonth.of(2026, 6)
         )
 
@@ -86,17 +86,17 @@ class EventDbTest {
         )
 
         eventDb.writeEvent(
-            Event(100, EventType.PING, LocalDateTime.now().format(dateTimeFormatter)),
+            Event(100, EventType.PING, LocalDateTime.now().format(dateTimeFormatter), null),
             YearMonth.of(2025, 2)
         )
 
         eventDb.writeEvent(
-            Event(100, EventType.PING, LocalDateTime.now().format(dateTimeFormatter)),
+            Event(100, EventType.PING, LocalDateTime.now().format(dateTimeFormatter), null),
             YearMonth.of(2025, 3)
         )
         
         eventDb.writeEvent(
-            Event(100, EventType.PING, LocalDateTime.now().format(dateTimeFormatter)),
+            Event(100, EventType.PING, LocalDateTime.now().format(dateTimeFormatter), null),
             YearMonth.of(2025,4)
         )
 
@@ -113,19 +113,19 @@ class EventDbTest {
         )
 
         eventDb.writeEvent(
-            Event(100, EventType.PING, LocalDateTime.now().format(dateTimeFormatter)),
+            Event(100, EventType.PING, LocalDateTime.now().format(dateTimeFormatter), null),
             YearMonth.of(2025, 2)
         )
 
-        eventDb.writeEvent(Event(100, EventType.PING, LocalDateTime.now().format(dateTimeFormatter)),
+        eventDb.writeEvent(Event(100, EventType.PING, LocalDateTime.now().format(dateTimeFormatter), null),
             YearMonth.of(2025, 3)
         )
 
-        eventDb.writeEvent(Event(100, EventType.PING, LocalDateTime.now().format(dateTimeFormatter)),
+        eventDb.writeEvent(Event(100, EventType.PING, LocalDateTime.now().format(dateTimeFormatter), null),
             YearMonth.of(2025, 4)
         )
 
-        eventDb.writeEvent(Event(100, EventType.PING, LocalDateTime.now().format(dateTimeFormatter)),
+        eventDb.writeEvent(Event(100, EventType.PING, LocalDateTime.now().format(dateTimeFormatter), null),
             YearMonth.of(2025, 5)
         )
 
@@ -142,12 +142,12 @@ class EventDbTest {
         )
 
         eventDb.writeEvent(
-            Event(100, EventType.PING, LocalDateTime.now().format(dateTimeFormatter)),
+            Event(100, EventType.PING, LocalDateTime.now().format(dateTimeFormatter), null),
             YearMonth.of(2025, 12)
         )
 
         eventDb.writeEvent(
-            Event(100, EventType.PING, LocalDateTime.now().format(dateTimeFormatter)),
+            Event(100, EventType.PING, LocalDateTime.now().format(dateTimeFormatter), null),
             YearMonth.of(2026, 1)
         )
 
@@ -165,7 +165,7 @@ class EventDbTest {
         )
 
         eventDb.writeEvent(
-            Event(100, EventType.START, LocalDateTime.now().format(dateTimeFormatter)),
+            Event(100, EventType.START, LocalDateTime.now().format(dateTimeFormatter), null),
             YearMonth.of(2025, 11)
         )
 
@@ -182,7 +182,7 @@ class EventDbTest {
         )
 
         eventDb.writeEvent(
-            Event(100, EventType.PING, LocalDateTime.now().format(dateTimeFormatter)),
+            Event(100, EventType.PING, LocalDateTime.now().format(dateTimeFormatter), null),
             yearMonth = YearMonth.of(2025, 12)
         )
 
@@ -221,7 +221,7 @@ class EventDbTest {
         )
 
         eventDb.writeEvent(
-            Event(1L, EventType.PING, "time"),
+            Event(1L, EventType.PING, LocalDateTime.now().format(dateTimeFormatter), null),
             yearMonth = yearMonth
         )
 
@@ -242,13 +242,13 @@ class EventDbTest {
         )
 
         eventDb.writeEvent(
-            Event(1L, EventType.PING, "time"),
+            Event(1L, EventType.PING, LocalDateTime.now().format(dateTimeFormatter), null),
             firstMonth
         )
 
         val secondMonth = YearMonth.of(2026, 5)
         eventDb.writeEvent(
-            Event(2L, EventType.PING, "time"),
+            Event(2L, EventType.PING, LocalDateTime.now().format(dateTimeFormatter), null),
             secondMonth
         )
 

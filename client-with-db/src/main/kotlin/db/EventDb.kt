@@ -1,16 +1,12 @@
 package org.example.db
 
-import io.github.oshai.kotlinlogging.KotlinLogging
 import model.Event
 import model.EventType
 import java.io.File
 import java.io.IOException
 import java.sql.Connection
 import java.sql.DriverManager
-import java.sql.SQLException
 import java.time.YearMonth
-
-private val logger = KotlinLogging.logger {}
 
 private const val CREATE_TABLE = """
     CREATE TABLE IF NOT EXISTS events (
@@ -40,15 +36,8 @@ class EventDb(
     private var previousMonthConnection: Connection? = null
 
     init {
-        try {
-            currentMonthConnection = DriverManager.getConnection(SQLITE + createPath(currentYearMonth))
-        } catch (e: SQLException) {
-            // TODO: send to telegram
-            logger.error(e) {}
-            throw e
-        }
+        currentMonthConnection = DriverManager.getConnection(SQLITE + createPath(currentYearMonth))
         createTableIfNotExists()
-
         openConnectionPreviousMonthFile()
     }
 
@@ -66,14 +55,8 @@ class EventDb(
 
 
     private fun createTableIfNotExists() {
-        try {
-            currentMonthConnection.createStatement().use { statement ->
-                statement.execute(CREATE_TABLE)
-            }
-        } catch (e: SQLException) {
-            // TODO: send to telegram
-            logger.error(e) {}
-            throw e
+        currentMonthConnection.createStatement().use { statement ->
+            statement.execute(CREATE_TABLE)
         }
     }
 
@@ -83,13 +66,7 @@ class EventDb(
         val previousMonthPathString = createPath(yearMonth = previousMonthYearMonth)
         val previousMonthFile = File(previousMonthPathString)
         if (previousMonthFile.exists()) {
-            try {
-                previousMonthConnection = DriverManager.getConnection(SQLITE + createPath(previousMonthYearMonth))
-            } catch (e: SQLException) {
-                // TODO: send to telegram
-                logger.error(e) {}
-                throw e
-            }
+            previousMonthConnection = DriverManager.getConnection(SQLITE + createPath(previousMonthYearMonth))
         }
     }
 
@@ -107,22 +84,13 @@ class EventDb(
     }
 
     private fun getLastIdFromConnection(connection: Connection): Long {
-        try {
-            connection.createStatement().use { statement ->
-                val resultSet = statement.executeQuery(READ_MAX_ID)
-                if (!resultSet.next()) {
-                    val message = "can't get max id from db"
-                    // TODO: send to telegram
-                    logger.error { message }
-                    throw IllegalStateException(message)
-                }
-
-                return resultSet.getLong("max_id")
+        connection.createStatement().use { statement ->
+            val resultSet = statement.executeQuery(READ_MAX_ID)
+            if (!resultSet.next()) {
+                throw IllegalStateException("can't get max id from db")
             }
-        } catch (e: SQLException) {
-            // TODO: send to telegram
-            logger.error(e) {}
-            throw e
+
+            return resultSet.getLong("max_id")
         }
     }
 
@@ -131,47 +99,26 @@ class EventDb(
             if (currentYearMonth.plusMonths(1) == yearMonth) {
                 processNewMonth(yearMonth)
             } else {
-                val exception = IllegalArgumentException("wrong date")
-                logger.error(exception) {}
-                throw exception
+                throw IllegalArgumentException("wrong date")
             }
         }
 
-        try {
-            currentMonthConnection.prepareStatement(INSERT_EVENT).use { preparedStatement ->
-                preparedStatement.setLong(1, event.id)
-                preparedStatement.setString(2, event.eventType.toString())
-                preparedStatement.setInt(3, 0)
-                preparedStatement.setString(4, event.time)
-                preparedStatement.executeUpdate()
-            }
-        } catch(e: SQLException) {
-            // TODO: send to telegram
-            logger.error(e) {}
-            throw e
+        currentMonthConnection.prepareStatement(INSERT_EVENT).use { preparedStatement ->
+            preparedStatement.setLong(1, event.id)
+            preparedStatement.setString(2, event.eventType.toString())
+            preparedStatement.setInt(3, 0)
+            preparedStatement.setString(4, event.time)
+            preparedStatement.executeUpdate()
         }
     }
 
     private fun processNewMonth(yearMonth: YearMonth) {
-        try {
-            previousMonthConnection?.close()
-        } catch (e: SQLException) {
-            // TODO: send to telegram
-            logger.error(e) {}
-            throw e
-        }
+        previousMonthConnection?.close()
 
         deleteTheOldestFile(yearMonth)
 
         previousMonthConnection = currentMonthConnection
-
-        try {
-            currentMonthConnection = DriverManager.getConnection(SQLITE + createPath(yearMonth))
-        } catch (e: SQLException) {
-            // TODO: send to telegram
-            logger.error(e) {}
-            throw e
-        }
+        currentMonthConnection = DriverManager.getConnection(SQLITE + createPath(yearMonth))
 
         currentYearMonth = yearMonth
 
@@ -184,7 +131,6 @@ class EventDb(
             return
         }
         if (!file.delete()) {
-            // TODO: send to telegram
             throw IOException("Failed to delete file: $file")
         }
     }
@@ -210,30 +156,25 @@ class EventDb(
         limit: Int,
         collector: MutableList<Event>
     ): Boolean {
-        try {
-            connection.prepareStatement(READ_TAIL_DESC).use { statement ->
-                statement.setInt(1, limit)
-                val resultSet = statement.executeQuery()
-                var rowCount = 0
-                while (resultSet.next()) {
-                    rowCount++
-                    if (resultSet.getInt("is_received") == 1) {
-                        return true
-                    }
-                    collector.add(
-                        Event(
-                            id = resultSet.getLong("id"),
-                            eventType = EventType.valueOf(resultSet.getString("event_type")),
-                            time = resultSet.getString("time")
-                        )
-                    )
+        connection.prepareStatement(READ_TAIL_DESC).use { statement ->
+            statement.setInt(1, limit)
+            val resultSet = statement.executeQuery()
+            var rowCount = 0
+            while (resultSet.next()) {
+                rowCount++
+                if (resultSet.getInt("is_received") == 1) {
+                    return true
                 }
-                return rowCount >= limit
+                collector.add(
+                    Event(
+                        id = resultSet.getLong("id"),
+                        eventType = EventType.valueOf(resultSet.getString("event_type")),
+                        time = resultSet.getString("time"),
+                        additionalInfo = null
+                    )
+                )
             }
-        } catch (e: SQLException) {
-            // TODO: send to telegram
-            logger.error(e) {}
-            throw e
+            return rowCount >= limit
         }
     }
 
@@ -245,34 +186,27 @@ class EventDb(
 
         markReceivedOnConnection(currentMonthConnection, sql, ids)
 
-        // TODO: send event to telegram if null
         if (previousConnectionUsed) {
-            previousMonthConnection?.let { markReceivedOnConnection(it, sql, ids) }
+            val previousMonthConnectionVal = previousMonthConnection
+            if (previousMonthConnectionVal != null) {
+                markReceivedOnConnection(previousMonthConnectionVal, sql, ids)
+            } else {
+                throw IllegalStateException("previous month connection not set")
+            }
         }
     }
 
     private fun markReceivedOnConnection(connection: Connection, sql: String, ids: List<Long>) {
-        try {
-            connection.prepareStatement(sql).use { statement ->
-                ids.forEachIndexed { index, id ->
-                    statement.setLong(index + 1, id)
-                }
-                statement.executeUpdate()
+        connection.prepareStatement(sql).use { statement ->
+            ids.forEachIndexed { index, id ->
+                statement.setLong(index + 1, id)
             }
-        } catch (e: SQLException) {
-            // TODO: send to telegram
-            logger.error(e) {}
-            throw e
+            statement.executeUpdate()
         }
     }
 
     fun closeConnections() {
-        try {
-            currentMonthConnection.close()
-            previousMonthConnection?.close()
-        } catch (e: SQLException) {
-            logger.error(e) {}
-            throw e
-        }
+        currentMonthConnection.close()
+        previousMonthConnection?.close()
     }
 }

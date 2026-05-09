@@ -33,6 +33,10 @@ fun main() {
 }
 
 fun processStartMessage(deviceId: String, httpSender: HttpSender) {
-    val event = Event(0, EventType.START, LocalDateTime.now().format(dateTimeFormatter))
+    val event = Event(
+        id = 0,
+        eventType = EventType.START,
+        time = LocalDateTime.now().format(dateTimeFormatter),
+        additionalInfo = null)
     httpSender.send(EventRequest(listOf(event), deviceId))
 }

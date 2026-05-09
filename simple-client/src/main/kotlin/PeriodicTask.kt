@@ -11,9 +11,11 @@ class PeriodicTask(
     private val httpSender: HttpSender): Runnable {
 
     override fun run() {
-        val event = Event(messageId++,
-            EventType.PING,
-            LocalDateTime.now().format(dateTimeFormatter))
+        val event = Event(
+            id = messageId++,
+            eventType = EventType.PING,
+            time = LocalDateTime.now().format(dateTimeFormatter),
+            additionalInfo = null)
 
         httpSender.send(EventRequest(listOf(event), deviceId))
 

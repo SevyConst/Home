@@ -41,7 +41,7 @@ class ProcessEventTest {
         )
 
         eventDb.writeEvent(
-            Event(1L, EventType.PING, "time"),
+            Event(1L, EventType.PING, "time", null),
             firstMonth
         )
 
@@ -52,7 +52,7 @@ class ProcessEventTest {
 
         val eventDbSpy = spy(eventDb)
         processEvent(
-            event = Event(2L, EventType.PING, "time"),
+            event = Event(2L, EventType.PING, "time", null),
             yearMonth = secondMonth,
             eventDb = eventDbSpy,
             deviceId = "deviceId",
@@ -81,14 +81,14 @@ class ProcessEventTest {
         )
 
         eventDb.writeEvent(
-            Event(1L, EventType.PING, "time"),
+            Event(1L, EventType.PING, "time", null),
             firstMonth
         )
 
         val secondMonth = YearMonth.of(2026, 5)
 
         eventDb.writeEvent(
-            Event(2L, EventType.PING, "time"),
+            Event(2L, EventType.PING, "time", null),
             secondMonth
         )
 
@@ -99,7 +99,7 @@ class ProcessEventTest {
 
         val eventDbSpy = spy(eventDb)
         processEvent(
-            event = Event(3L, EventType.PING, "time"),
+            event = Event(3L, EventType.PING, "time", null),
             yearMonth = secondMonth,
             eventDb = eventDbSpy,
             deviceId = "deviceId",

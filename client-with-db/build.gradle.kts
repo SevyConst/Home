@@ -13,6 +13,7 @@ dependencies {
     implementation(project(":simple-client"))
     implementation(project(":core"))
 
+    implementation(libs.kotlinxSerialization)
     implementation(libs.sqlite.jdbc)
     implementation(libs.kotlin.logging)
     implementation(libs.log4j.core)
