@@ -53,7 +53,6 @@ class EventDb(
         return result.toString()
     }
 
-
     private fun createTableIfNotExists() {
         currentMonthConnection.createStatement().use { statement ->
             statement.execute(CREATE_TABLE)

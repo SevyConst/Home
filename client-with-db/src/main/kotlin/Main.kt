@@ -10,14 +10,12 @@ import org.example.config.ConfigDb
 import org.example.db.EventDb
 import java.time.LocalDateTime
 import java.time.YearMonth
-import java.time.format.DateTimeFormatter
 import java.util.concurrent.Executors
 import java.util.concurrent.TimeUnit
 import kotlin.system.exitProcess
 
 private val logger = KotlinLogging.logger {}
 private val scheduler = Executors.newSingleThreadScheduledExecutor()
-val dateTimeFormatter: DateTimeFormatter = DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss")
 const val ERROR_STACKTRACE = "error stacktrace"
 const val ERROR_MESSAGE = "error message"
 

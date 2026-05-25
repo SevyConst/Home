@@ -6,12 +6,9 @@ import model.EventRequest
 import model.EventType
 import org.example.config.Config
 import java.time.LocalDateTime
-import java.time.format.DateTimeFormatter
 import java.util.concurrent.Executors
 import java.util.concurrent.TimeUnit
 
-
-val dateTimeFormatter: DateTimeFormatter = DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss")
 
 private val logger = KotlinLogging.logger {}
 private val scheduler = Executors.newSingleThreadScheduledExecutor()
