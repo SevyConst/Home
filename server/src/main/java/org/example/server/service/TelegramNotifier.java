@@ -22,7 +22,6 @@ public class TelegramNotifier {
                             @Value("${telegram.bot.chat-id:}") String chatId) {
         this.chatId = chatId;
         this.telegramClient = new OkHttpTelegramClient(botToken);
-
     }
 
     @Async

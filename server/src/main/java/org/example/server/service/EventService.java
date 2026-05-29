@@ -1,26 +1,38 @@
 package org.example.server.service;
 
+import lombok.Getter;
 import lombok.RequiredArgsConstructor;
+import lombok.Setter;
 import model.Event;
 import model.EventRequest;
 import model.EventType;
-import org.example.server.model.Messages;
+import org.example.FormattersKt;
 import org.springframework.stereotype.Service;
 
 import java.time.LocalDateTime;
 import java.time.format.DateTimeFormatter;
 import java.util.List;
+import java.util.Optional;
 import java.util.concurrent.ConcurrentHashMap;
 
 @Service
 @RequiredArgsConstructor
 public class EventService {
 
-    private static final DateTimeFormatter formatterWithoutSeconds = DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm");
+    @Getter
+    @Setter
+    private static volatile Long periodMilliseconds = 30L * 1000;
+
+    public static final DateTimeFormatter formatterWithoutSeconds = DateTimeFormatter.ofPattern("HH:mm yyyy-MM-dd");
+
+    public static final String ADDED = "\nбыл добавлен";
+    public static final String TURN_ON = "\nвключился в ";
+    public static final String NO_POWER = "\nпитание было отключено с ";
+    public static final String UNTIL = " до ";
+    public static final String WITHOUT_INTERNET = "\nне было интернета с ";
+    public static final String ERROR = "\nошибка в ";
 
     private final TelegramNotifier telegramNotifier;
-
-    public static volatile Long SleepSeconds = 30L;
 
     ConcurrentHashMap<String, CountdownTimer> countdownTimersMap = new ConcurrentHashMap<>();
 
@@ -41,89 +53,85 @@ public class EventService {
 
         countdownTimer.getLock().lock();
         try {
-            Messages messages = generateMessages(
+            String messageFirstLine = deviceId + ":";
+            StringBuilder messageForUser = new StringBuilder(messageFirstLine);
+            StringBuilder messageForAdmin = new StringBuilder(messageFirstLine);
+            processEvents(
                     countdownTimer,
                     request.getEvents(),
-                    deviceId,
-                    firstLaunch
+                    firstLaunch,
+                    messageForUser,
+                    messageForAdmin
             );
+            countdownTimer.setLastOnlineTime(LocalDateTime.now());
+            countdownTimer.setOffline(false);
+            countdownTimer.start();
 
             // TODO: process message for user
-            if (!messages.messageForAdmin().isEmpty()) {
-                telegramNotifier.send(messages.messageForAdmin());
+            String messageForAdminString = messageForAdmin.toString();
+            if (!messageFirstLine.equals(messageForAdminString)) {
+                telegramNotifier.send(messageForAdminString);
             }
         } finally {
             countdownTimer.getLock().unlock();
         }
     }
 
-    private Messages generateMessages(
+    private void processEvents(
             CountdownTimer countdownTimer,
             List<Event> events,
-            String deviceId,
-            boolean firstLaunch) {
-        countdownTimer.setLastOnlineTime(LocalDateTime.now());
-        countdownTimer.setOffline(false);
-        countdownTimer.start();
+            boolean firstLaunch,
+            StringBuilder messageForUser,
+            StringBuilder messageForAdmin
+    ) {
+        Optional<Integer> firstErrorIndex = getFirstIndexError(events);
+        EventType firstEventType = events.getFirst().getEventType();
+        if (firstLaunch) {
+            messageForAdmin.append(ADDED);
+        }
+        if (countdownTimer.isOffline()
+                && !(events.size() == 1 && (firstEventType == EventType.START || firstEventType == EventType.ERROR))
+        ) {
+            String timeFirstErrorOrLastEvent = firstErrorIndex.map(i -> events.get(i).getTime())
+                    .orElseGet(() -> events.getLast().getTime());
+            messageForAdmin.append(WITHOUT_INTERNET)
+                    .append(removeSeconds(events.getFirst().getTime()))
+                    .append(UNTIL)
+                    .append(removeSeconds(timeFirstErrorOrLastEvent));
+//                    .append("\n\n"); // TODO: check triple newline
+        }
 
-        StringBuilder messageForUser = new StringBuilder();
-        StringBuilder messageForAdmin = new StringBuilder();
+        processEventsSerially(messageForUser, messageForAdmin, events, countdownTimer, firstLaunch);
+    }
 
-        boolean hasError = false;
-
-        StringBuilder messagePart = new StringBuilder();
-        for (int i = 0; i < events.size() && !hasError; i++) {
+    private void processEventsSerially(
+            StringBuilder messageForUser,
+            StringBuilder messageForAdmin,
+            List<Event> events,
+            CountdownTimer countdownTimer,
+            boolean firstLaunch
+    ) {
+        String messagePart;
+        for (int i = 0; i < events.size(); i++) {
             Event currentEvent = events.get(i);
             switch (currentEvent.getEventType()) {
                 case EventType.START:
-                    messagePart.append(createMessageForStart(i, countdownTimer, events, firstLaunch));
+                    messagePart = createMessageForStart(i, countdownTimer, events, firstLaunch);
                     messageForUser.append(messagePart);
                     messageForAdmin.append(messagePart);
                     break;
                 case EventType.ERROR:
-                    hasError = true;
-                    messagePart = new StringBuilder();
-                    messagePart.append("\nошибка в ")
-                            .append(removeSeconds(currentEvent.getTime()));
+                    messagePart = ERROR + removeSeconds(currentEvent.getTime());
                     messageForUser.append(messagePart);
                     messageForAdmin.append(messagePart)
                             .append(" : \"")
                             .append(currentEvent.getAdditionalInfo())
                             .append("\"");
-                    break;
+                    return;
                 case EventType.PING:
-                    if (0 == i) {
-                        if (firstLaunch) {
-                            messageForAdmin.append("было добавлено в ")
-                                    .append(removeSeconds(currentEvent.getTime()));
-
-                        } else if (countdownTimer.isOffline()) {
-                            messagePart.append(createOfflineMessageForPing(
-                                    countdownTimer,
-                                    currentEvent,
-                                    events.size() == 1
-                            ));
-                            messageForUser.append(messagePart);
-                            messageForAdmin.append(messagePart);
-                        }
-                        break;
-                    }
+                    break;
             }
         }
-
-        if (!messageForAdmin.isEmpty()) {
-            messageForAdmin = new StringBuilder(deviceId)
-                    .append(": ")
-                    .append(messageForAdmin);
-        }
-
-        if (!messageForUser.isEmpty()) {
-            messageForUser = new StringBuilder(deviceId)
-                    .append(": ")
-                    .append(messageForUser);
-        }
-
-        return new Messages(messageForAdmin.toString(), messageForUser.toString());
     }
 
     private String createMessageForStart (
@@ -135,53 +143,27 @@ public class EventService {
         Event currentEvent = events.get(i);
 
         if (0 == i && firstLaunch) {
-            return "\nвключился в " + removeSeconds(currentEvent.getTime());
+            return TURN_ON + removeSeconds(currentEvent.getTime());
         }
 
-        StringBuilder result = new StringBuilder();
-        result.append("\nпитание было отключено ");
         String beginning = 0 == i
                 ? countdownTimer.getLastOnlineTime().format(formatterWithoutSeconds)
                 : removeSeconds(events.get(i - 1).getTime());
-        String end = removeSeconds(currentEvent.getTime());
-        if (beginning.equals(end)) {
-            result.append("на короткий период (не дольше минуты) в ")
-                    .append(beginning);
-        } else {
-            result.append("с ")
-                    .append(beginning)
-                    .append(" до ")
-                    .append(end);
-        }
 
-        return result.toString();
+        return NO_POWER  + beginning + UNTIL + removeSeconds(currentEvent.getTime());
     }
 
-    private String createOfflineMessageForPing(
-            CountdownTimer countdownTimer,
-            Event currentEvent,
-            boolean isLastEvent) {
-        String beginning = countdownTimer.getLastOnlineTime().format(formatterWithoutSeconds);
-        String end = isLastEvent
-                ? LocalDateTime.now().format(formatterWithoutSeconds)
-                : removeSeconds(currentEvent.getTime());
-
-        StringBuilder result = new StringBuilder().append("\nне было интернета ");
-        if (beginning.equals(end)) {
-            result.append("в короткий промежуток времени (меньше минуты) в ")
-                    .append(beginning);
-        } else {
-            result.append("с " )
-                    .append(beginning)
-                    .append(" до ")
-                    .append(end);
+    private Optional<Integer> getFirstIndexError(List<Event> events) {
+        for (int i = 0; i < events.size(); i++) {
+            if (events.get(i).getEventType() == EventType.ERROR) {
+                return Optional.of(i);
+            }
         }
-
-        return result.toString();
+        return Optional.empty();
     }
 
     private String removeSeconds(String time) {
-        return time.substring(0, time.lastIndexOf(':'));
+        return LocalDateTime.parse(time, FormattersKt.dateTimeFormatter).format(formatterWithoutSeconds);
     }
 
 }

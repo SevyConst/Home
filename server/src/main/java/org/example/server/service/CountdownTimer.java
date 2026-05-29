@@ -12,6 +12,11 @@ import java.util.concurrent.locks.Lock;
 import java.util.concurrent.locks.ReentrantLock;
 
 public class CountdownTimer {
+
+    public static final double COEFFICIENT_WAITING = 2;
+
+    public static final String OFFLINE = " оффлайн";
+
     private final ScheduledExecutorService scheduler;
     private final String deviceId;
     private final TelegramNotifier telegramNotifier;
@@ -47,12 +52,12 @@ public class CountdownTimer {
             lock.lock();
             try {
                 isOffline = true;
-                telegramNotifier.send(deviceId + " оффлайн");
+                telegramNotifier.send(deviceId + OFFLINE);
             } finally {
                 lock.unlock();
             }
             currentTask.cancel(true);
-        }, EventService.SleepSeconds*2, EventService.SleepSeconds*2, TimeUnit.SECONDS);
+        }, (long) (EventService.getPeriodMilliseconds() * COEFFICIENT_WAITING), Long.MAX_VALUE, TimeUnit.MILLISECONDS);
     }
 
 
