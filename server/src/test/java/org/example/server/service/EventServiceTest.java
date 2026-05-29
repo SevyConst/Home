@@ -126,7 +126,7 @@ class EventServiceTest {
                 .send(DEVICE_ID + CountdownTimer.OFFLINE);
         inOrder.verify(telegramNotifierMock)
                 .send(DEVICE_ID + ":" + EventService.WITHOUT_INTERNET + serverTimeString1
-                        + EventService.UNTIL +  serverTimeString2);
+                        + EventService.UNTIL +  serverTimeString2 + "\n");
         inOrder.verifyNoMoreInteractions();
 
         EventService.setPeriodMilliseconds(sleepMillisecondsDefault);
@@ -510,7 +510,7 @@ class EventServiceTest {
                         .send(DEVICE_ID + CountdownTimer.OFFLINE);
         inOrder.verify(telegramNotifierMock)
                 .send(DEVICE_ID + ":" + EventService.WITHOUT_INTERNET +  serverTimeString1
-                        + EventService.UNTIL + serverTimeString3
+                        + EventService.UNTIL + serverTimeString3 + "\n"
                         + EventService.NO_POWER + serverTimeString2
                         + EventService.UNTIL + serverTimeString3);
         inOrder.verifyNoMoreInteractions();
@@ -665,7 +665,7 @@ class EventServiceTest {
                 .send(DEVICE_ID + CountdownTimer.OFFLINE);
         inOrder.verify(telegramNotifierMock)
                 .send(DEVICE_ID + ":" + EventService.WITHOUT_INTERNET +  serverTimeString1
-                        + EventService.UNTIL + serverTimeString5
+                        + EventService.UNTIL + serverTimeString5 + "\n"
                         + EventService.NO_POWER + serverTimeString3
                         + EventService.UNTIL + serverTimeString4);
         inOrder.verifyNoMoreInteractions();

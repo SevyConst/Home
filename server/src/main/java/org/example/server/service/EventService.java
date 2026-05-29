@@ -97,8 +97,8 @@ public class EventService {
             messageForAdmin.append(WITHOUT_INTERNET)
                     .append(removeSeconds(events.getFirst().getTime()))
                     .append(UNTIL)
-                    .append(removeSeconds(timeFirstErrorOrLastEvent));
-//                    .append("\n\n"); // TODO: check triple newline
+                    .append(removeSeconds(timeFirstErrorOrLastEvent))
+                    .append("\n");
         }
 
         processEventsSerially(messageForUser, messageForAdmin, events, countdownTimer, firstLaunch);
