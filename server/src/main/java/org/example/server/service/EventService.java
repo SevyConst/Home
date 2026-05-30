@@ -34,7 +34,7 @@ public class EventService {
 
     private final TelegramNotifier telegramNotifier;
 
-    ConcurrentHashMap<String, CountdownTimer> countdownTimersMap = new ConcurrentHashMap<>();
+    ConcurrentHashMap<String, DeviceProcessor> countdownTimersMap = new ConcurrentHashMap<>();
 
     public void processEvents(EventRequest request) {
 
@@ -43,29 +43,37 @@ public class EventService {
 
         String deviceId = request.getDeviceId();
 
-        CountdownTimer countdownTimer = countdownTimersMap.get(deviceId);
+        DeviceProcessor deviceProcessor = countdownTimersMap.get(deviceId);
         boolean firstLaunch = false;
-        if (null == countdownTimer) {
+        if (null == deviceProcessor) {
             firstLaunch = true;
-            countdownTimer = new CountdownTimer(deviceId, telegramNotifier);
-            countdownTimersMap.put(deviceId, countdownTimer);
+            deviceProcessor = new DeviceProcessor(deviceId, telegramNotifier);
+            countdownTimersMap.put(deviceId, deviceProcessor);
         }
 
-        countdownTimer.getLock().lock();
+        if (deviceProcessor.isHasError()) {
+            return;
+        }
+
+        deviceProcessor.getLock().lock();
         try {
             String messageFirstLine = deviceId + ":";
             StringBuilder messageForUser = new StringBuilder(messageFirstLine);
             StringBuilder messageForAdmin = new StringBuilder(messageFirstLine);
+
             processEvents(
-                    countdownTimer,
+                    deviceProcessor,
                     request.getEvents(),
                     firstLaunch,
                     messageForUser,
                     messageForAdmin
             );
-            countdownTimer.setLastOnlineTime(LocalDateTime.now());
-            countdownTimer.setOffline(false);
-            countdownTimer.start();
+
+            deviceProcessor.setLastOnlineTime(LocalDateTime.now());
+            deviceProcessor.setOffline(false);
+            if (!deviceProcessor.isHasError()) {
+                deviceProcessor.startCountdownTimer();
+            }
 
             // TODO: process message for user
             String messageForAdminString = messageForAdmin.toString();
@@ -73,42 +81,45 @@ public class EventService {
                 telegramNotifier.send(messageForAdminString);
             }
         } finally {
-            countdownTimer.getLock().unlock();
+            deviceProcessor.getLock().unlock();
         }
     }
 
     private void processEvents(
-            CountdownTimer countdownTimer,
+            DeviceProcessor deviceProcessor,
             List<Event> events,
             boolean firstLaunch,
             StringBuilder messageForUser,
             StringBuilder messageForAdmin
     ) {
         Optional<Integer> firstErrorIndex = getFirstIndexError(events);
+        if  (firstErrorIndex.isPresent()) {
+            deviceProcessor.setHasError(true);
+        }
         EventType firstEventType = events.getFirst().getEventType();
         if (firstLaunch) {
             messageForAdmin.append(ADDED);
         }
-        if (countdownTimer.isOffline()
-                && !(events.size() == 1 && (firstEventType == EventType.START || firstEventType == EventType.ERROR))
-        ) {
+        if (deviceProcessor.isOffline() && !(events.size() == 1 && firstEventType == EventType.START)) {
             String timeFirstErrorOrLastEvent = firstErrorIndex.map(i -> events.get(i).getTime())
                     .orElseGet(() -> events.getLast().getTime());
-            messageForAdmin.append(WITHOUT_INTERNET)
-                    .append(removeSeconds(events.getFirst().getTime()))
-                    .append(UNTIL)
-                    .append(removeSeconds(timeFirstErrorOrLastEvent))
-                    .append("\n");
+            String messagePart = WITHOUT_INTERNET
+                    + removeSeconds(events.getFirst().getTime())
+                    + UNTIL
+                    + removeSeconds(timeFirstErrorOrLastEvent)
+                    + "\n";
+            messageForUser.append(messagePart);
+            messageForAdmin.append(messagePart);
         }
 
-        processEventsSerially(messageForUser, messageForAdmin, events, countdownTimer, firstLaunch);
+        processEventsSerially(messageForUser, messageForAdmin, events, deviceProcessor, firstLaunch);
     }
 
     private void processEventsSerially(
             StringBuilder messageForUser,
             StringBuilder messageForAdmin,
             List<Event> events,
-            CountdownTimer countdownTimer,
+            DeviceProcessor deviceProcessor,
             boolean firstLaunch
     ) {
         String messagePart;
@@ -116,7 +127,7 @@ public class EventService {
             Event currentEvent = events.get(i);
             switch (currentEvent.getEventType()) {
                 case EventType.START:
-                    messagePart = createMessageForStart(i, countdownTimer, events, firstLaunch);
+                    messagePart = createMessageForStart(i, deviceProcessor, events, firstLaunch);
                     messageForUser.append(messagePart);
                     messageForAdmin.append(messagePart);
                     break;
@@ -124,7 +135,7 @@ public class EventService {
                     messagePart = ERROR + removeSeconds(currentEvent.getTime());
                     messageForUser.append(messagePart);
                     messageForAdmin.append(messagePart)
-                            .append(" : \"")
+                            .append(" :\n\"")
                             .append(currentEvent.getAdditionalInfo())
                             .append("\"");
                     return;
@@ -136,7 +147,7 @@ public class EventService {
 
     private String createMessageForStart (
             int i,
-            CountdownTimer countdownTimer,
+            DeviceProcessor deviceProcessor,
             List<Event> events,
             boolean firstLaunch
     ) {
@@ -147,7 +158,7 @@ public class EventService {
         }
 
         String beginning = 0 == i
-                ? countdownTimer.getLastOnlineTime().format(formatterWithoutSeconds)
+                ? deviceProcessor.getLastOnlineTime().format(formatterWithoutSeconds)
                 : removeSeconds(events.get(i - 1).getTime());
 
         return NO_POWER  + beginning + UNTIL + removeSeconds(currentEvent.getTime());

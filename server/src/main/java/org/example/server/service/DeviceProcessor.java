@@ -11,7 +11,7 @@ import java.util.concurrent.TimeUnit;
 import java.util.concurrent.locks.Lock;
 import java.util.concurrent.locks.ReentrantLock;
 
-public class CountdownTimer {
+public class DeviceProcessor {
 
     public static final double COEFFICIENT_WAITING = 2;
 
@@ -31,9 +31,13 @@ public class CountdownTimer {
     private volatile LocalDateTime lastOnlineTime;
 
     @Getter
+    @Setter
+    private boolean hasError = false;
+
+    @Getter
     private final Lock lock = new ReentrantLock();
 
-    public CountdownTimer(String deviceId, TelegramNotifier telegramNotifier) {
+    public DeviceProcessor(String deviceId, TelegramNotifier telegramNotifier) {
         this.deviceId = deviceId;
         this.telegramNotifier = telegramNotifier;
         this.scheduler = Executors.newSingleThreadScheduledExecutor(r -> {
@@ -43,7 +47,7 @@ public class CountdownTimer {
         });
     }
 
-    public void start() {
+    public void startCountdownTimer() {
         if (currentTask != null && !currentTask.isDone()) {
             currentTask.cancel(true);
         }
