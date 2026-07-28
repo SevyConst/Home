@@ -1,7 +1,3 @@
-# Version catalog is a central place for you to declare and version dependencies
-# https://docs.gradle.org/current/userguide/platforms.html#sub:version-catalog
-# https://docs.gradle.org/current/userguide/platforms.html#sub::toml-dependencies-format
-
 [versions]
 kotlin = "2.3.20"
 kotlinxDatetime = "0.7.1"
@@ -32,6 +28,8 @@ spring-boot-starter-test = { module = "org.springframework.boot:spring-boot-star
 telegrambots-client = { module = "org.telegram:telegrambots-client", version.ref = "telegrambots" }
 telegrambots-meta = { module = "org.telegram:telegrambots-meta", version.ref = "telegrambots" }
 lombok = { module = "org.projectlombok:lombok" }
+spring-boot-starter-jdbc = { module = "org.springframework.boot:spring-boot-starter-jdbc" }
+postgresql = { module = "org.postgresql:postgresql" }
 
 [bundles]
 kotlinxEcosystem = ["kotlinxDatetime", "kotlinxSerialization", "kotlinxCoroutines"]

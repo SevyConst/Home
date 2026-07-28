@@ -1,85 +1,96 @@
 package org.example.server.service;
 
+import lombok.Data;
 import lombok.Getter;
 import lombok.RequiredArgsConstructor;
 import lombok.Setter;
+import lombok.extern.slf4j.Slf4j;
 import model.Event;
 import model.EventRequest;
 import model.EventType;
 import org.example.FormattersKt;
+import org.example.server.exception.DeviceInfoIsEmpty;
+import org.example.server.exception.DeviceNotFoundException;
+import org.example.server.model.dto.Chat;
+import org.example.server.repository.DeviceRepository;
 import org.springframework.stereotype.Service;
+import org.telegram.telegrambots.meta.exceptions.TelegramApiException;
 
-import java.time.LocalDateTime;
+import java.time.*;
 import java.time.format.DateTimeFormatter;
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 import java.util.concurrent.ConcurrentHashMap;
 
+@Slf4j
 @Service
 @RequiredArgsConstructor
 public class EventService {
 
     @Getter
     @Setter
-    private static volatile Long periodMilliseconds = 30L * 1000;
+    private static volatile Long periodMilliseconds = 60L * 1000;
 
     public static final DateTimeFormatter formatterWithoutSeconds = DateTimeFormatter.ofPattern("HH:mm yyyy-MM-dd");
+    public static final DateTimeFormatter formatterOnlyTimeWithoutSeconds = DateTimeFormatter.ofPattern("HH:mm");
 
-    public static final String ADDED = "\nбыл добавлен";
-    public static final String TURN_ON = "\nвключился в ";
-    public static final String NO_POWER = "\nпитание было отключено с ";
+    public static final String ADDED = " добавлен";
+    public static final String NEW_PARAGRAPH = "\n\n";
+    public static final String DASH = " - ";
+    public static final String TURN_ON = "только что включился";
+    public static final String NO_POWER = "не было питания между ";
+    public static final String AND = " и ";
+    public static final String NO_INTERNET = "не было интернета между ";
+    public static final String NO_INTERNET_SINCE_FIRST_START = "не было интернета с момента включения";
     public static final String UNTIL = " до ";
-    public static final String WITHOUT_INTERNET = "\nне было интернета с ";
-    public static final String ERROR = "\nошибка в ";
+    public static final String AT = " в ";
+    public static final String ERROR_MONITORING = " - ошибка. Наблюдение за ";
+    public static final String PAUSED = " приостановлено";
+    public static final String COUNT_RESTARTS = " - за это время питание отключалось ";
+    public static final String TIMES = " раз";
+    public static final String NO_POWER_LESS_ONE_MINUTE = " - возможно отключение питания было очень кратковременным, но это неточно. При этом точно, что отключение питания было не больше одной минуты";
+    public static final String NO_POWER_LESS_TWO_MINUTES = " - возможно отключение питания было очень кратковременным, но это неточно. При этом точно, что отключение питания было не больше двух минут";
 
     private final TelegramNotifier telegramNotifier;
+    private final DeviceRepository deviceRepository;
+    private final Clock clock;
 
-    ConcurrentHashMap<String, DeviceProcessor> countdownTimersMap = new ConcurrentHashMap<>();
+    private final ConcurrentHashMap<String, DeviceProcessor> deviceIdToDeviceProcessorMap = new ConcurrentHashMap<>();
 
     public void processEvents(EventRequest request) {
 
-        // TODO: check deviceId (search in the db)
-        // TODO: raspberry pi (as http-client) doesn't have its own time - process this case
-
         String deviceId = request.getDeviceId();
+        Optional<Boolean> hasClockOptional = deviceRepository.getHasClock(deviceId);
+        if (hasClockOptional.isEmpty()) {
+            throw new DeviceNotFoundException(deviceId);
+        }
 
-        DeviceProcessor deviceProcessor = countdownTimersMap.get(deviceId);
-        boolean firstLaunch = false;
+        List<Chat> chatsList = deviceRepository.getDeviceChats(deviceId);
+        if (chatsList.isEmpty()) {
+            throw new DeviceInfoIsEmpty("server error: can't find info about device " + deviceId
+                    + "(but the device has been found)");
+        }
+
+        boolean isFirstRequest = false;
+        DeviceProcessor deviceProcessor = deviceIdToDeviceProcessorMap.get(deviceId);
+
         if (null == deviceProcessor) {
-            firstLaunch = true;
-            deviceProcessor = new DeviceProcessor(deviceId, telegramNotifier);
-            countdownTimersMap.put(deviceId, deviceProcessor);
+            synchronized(this) {
+                deviceProcessor = deviceIdToDeviceProcessorMap.get(deviceId);
+                if (null == deviceProcessor) {
+                    isFirstRequest = true;
+                    deviceProcessor = new DeviceProcessor(deviceId, telegramNotifier, deviceRepository);
+                    deviceIdToDeviceProcessorMap.put(deviceId, deviceProcessor);
+                }
+                processEvents(deviceProcessor, request, isFirstRequest, chatsList, hasClockOptional.get());
+                return;
+            }
         }
 
-        if (deviceProcessor.isHasError()) {
-            return;
-        }
-
-        deviceProcessor.getLock().lock();
         try {
-            String messageFirstLine = deviceId + ":";
-            StringBuilder messageForUser = new StringBuilder(messageFirstLine);
-            StringBuilder messageForAdmin = new StringBuilder(messageFirstLine);
-
-            processEvents(
-                    deviceProcessor,
-                    request.getEvents(),
-                    firstLaunch,
-                    messageForUser,
-                    messageForAdmin
-            );
-
-            deviceProcessor.setLastOnlineTime(LocalDateTime.now());
-            deviceProcessor.setOffline(false);
-            if (!deviceProcessor.isHasError()) {
-                deviceProcessor.startCountdownTimer();
-            }
-
-            // TODO: process message for user
-            String messageForAdminString = messageForAdmin.toString();
-            if (!messageFirstLine.equals(messageForAdminString)) {
-                telegramNotifier.send(messageForAdminString);
-            }
+            deviceProcessor.getLock().lock();
+            processEvents(deviceProcessor, request, false, chatsList, hasClockOptional.get());
         } finally {
             deviceProcessor.getLock().unlock();
         }
@@ -87,84 +98,57 @@ public class EventService {
 
     private void processEvents(
             DeviceProcessor deviceProcessor,
-            List<Event> events,
-            boolean firstLaunch,
-            StringBuilder messageForUser,
-            StringBuilder messageForAdmin
+            EventRequest request,
+            boolean isFirstRequest,
+            List<Chat> chatsList,
+            boolean deviceHasClock
     ) {
-        Optional<Integer> firstErrorIndex = getFirstIndexError(events);
-        if  (firstErrorIndex.isPresent()) {
+        if (deviceProcessor.isHasError()) {
+            return;
+        }
+
+        List<Event> events = request.getEvents();
+
+        Optional<Integer> firstErrorIndex = getFirstErrorIndex(events);
+        if (firstErrorIndex.isPresent()) {
             deviceProcessor.setHasError(true);
-        }
-        EventType firstEventType = events.getFirst().getEventType();
-        if (firstLaunch) {
-            messageForAdmin.append(ADDED);
-        }
-        if (deviceProcessor.isOffline() && !(events.size() == 1 && firstEventType == EventType.START)) {
-            String timeFirstErrorOrLastEvent = firstErrorIndex.map(i -> events.get(i).getTime())
-                    .orElseGet(() -> events.getLast().getTime());
-            String messagePart = WITHOUT_INTERNET
-                    + removeSeconds(events.getFirst().getTime())
-                    + UNTIL
-                    + removeSeconds(timeFirstErrorOrLastEvent)
-                    + "\n";
-            messageForUser.append(messagePart);
-            messageForAdmin.append(messagePart);
+            TextPair textPair = processError(request, firstErrorIndex.get());
+            sendMessages(textPair, chatsList, deviceProcessor.getChatIdToRepliedMessageIdMap());
+            return;
         }
 
-        processEventsSerially(messageForUser, messageForAdmin, events, deviceProcessor, firstLaunch);
+        TextPair textPair = 1 == events.size()
+                ? buildTextPairForTheOneEvent(request, deviceProcessor, isFirstRequest, deviceHasClock)
+                : buildTextPairForTheMultipleEvents(request, deviceProcessor, isFirstRequest, deviceHasClock);
+
+        String deviceId = request.getDeviceId();
+
+        Optional<String> textForAdmin = textPair.getTextForAdminOptional();
+        if (isFirstRequest) {
+            textForAdmin = textForAdmin.isEmpty()
+                    ? Optional.of(deviceId + ADDED)
+                    : Optional.of(textForAdmin.get() + NEW_PARAGRAPH + deviceId + ADDED);
+            textPair.setTextForAdminOptional(textForAdmin);
+        }
+
+        sendMessages(textPair, chatsList, deviceProcessor.getChatIdToRepliedMessageIdMap());
+
+        ZonedDateTime lastOnlineTime = deviceHasClock
+                ? LocalDateTime.parse(events.getLast().getTime(), FormattersKt.dateTimeFormatter)
+                .atZone(ZonedDateTime.now(clock).getZone())
+                : ZonedDateTime.now(clock);
+        deviceProcessor.setLastOnlineTime(lastOnlineTime);
+        deviceProcessor.setOffline(false);
+        deviceProcessor.startCountdownTimer();
     }
 
-    private void processEventsSerially(
-            StringBuilder messageForUser,
-            StringBuilder messageForAdmin,
-            List<Event> events,
-            DeviceProcessor deviceProcessor,
-            boolean firstLaunch
-    ) {
-        String messagePart;
-        for (int i = 0; i < events.size(); i++) {
-            Event currentEvent = events.get(i);
-            switch (currentEvent.getEventType()) {
-                case EventType.START:
-                    messagePart = createMessageForStart(i, deviceProcessor, events, firstLaunch);
-                    messageForUser.append(messagePart);
-                    messageForAdmin.append(messagePart);
-                    break;
-                case EventType.ERROR:
-                    messagePart = ERROR + removeSeconds(currentEvent.getTime());
-                    messageForUser.append(messagePart);
-                    messageForAdmin.append(messagePart)
-                            .append(" :\n\"")
-                            .append(currentEvent.getAdditionalInfo())
-                            .append("\"");
-                    return;
-                case EventType.PING:
-                    break;
-            }
-        }
+    @Data
+    private static class TextPair {
+        private Optional<String> textForAdminOptional;
+        private Optional<String> textForUserOptional;
     }
 
-    private String createMessageForStart (
-            int i,
-            DeviceProcessor deviceProcessor,
-            List<Event> events,
-            boolean firstLaunch
-    ) {
-        Event currentEvent = events.get(i);
-
-        if (0 == i && firstLaunch) {
-            return TURN_ON + removeSeconds(currentEvent.getTime());
-        }
-
-        String beginning = 0 == i
-                ? deviceProcessor.getLastOnlineTime().format(formatterWithoutSeconds)
-                : removeSeconds(events.get(i - 1).getTime());
-
-        return NO_POWER  + beginning + UNTIL + removeSeconds(currentEvent.getTime());
-    }
-
-    private Optional<Integer> getFirstIndexError(List<Event> events) {
+    private Optional<Integer> getFirstErrorIndex(List<Event> events) {
         for (int i = 0; i < events.size(); i++) {
             if (events.get(i).getEventType() == EventType.ERROR) {
                 return Optional.of(i);
@@ -173,8 +157,423 @@ public class EventService {
         return Optional.empty();
     }
 
-    private String removeSeconds(String time) {
-        return LocalDateTime.parse(time, FormattersKt.dateTimeFormatter).format(formatterWithoutSeconds);
+    private TextPair processError(EventRequest request, int firstErrorIndex) {
+        String textForUser = request.getDeviceId() + ERROR_MONITORING + request.getDeviceId() + PAUSED;
+        TextPair textPair = new TextPair();
+        textPair.setTextForUserOptional(Optional.of(textForUser));
+        textPair.setTextForAdminOptional(Optional.of(
+                textForUser
+                        + "\n"
+                        + request.getEvents().get(firstErrorIndex).getAdditionalInfo()));
+        return textPair;
     }
 
+    private TextPair buildTextPairForTheOneEvent(
+            EventRequest request,
+            DeviceProcessor deviceProcessor,
+            boolean isFirstRequest,
+            boolean deviceHasClock
+    ) {
+        if (isFirstRequest) {
+            return buildTextPairForTheOneFirstEvent(request);
+        } else if (deviceProcessor.isOffline()) {
+            return buildTextPairForTheOneEventIfOffline(request, deviceProcessor.getLastOnlineTime(), deviceHasClock);
+        }
+
+        return buildTextPairForTheOneEventIfOnline(request, deviceProcessor.getLastOnlineTime(), deviceHasClock);
+    }
+
+    private TextPair buildTextPairForTheOneFirstEvent(EventRequest request) {
+        EventType eventType = request.getEvents().getFirst().getEventType();
+        Optional<String> result = EventType.START == eventType
+                ? Optional.of(request.getDeviceId() + " " + TURN_ON)
+                : Optional.empty();
+
+        TextPair textPair = new TextPair();
+        textPair.setTextForAdminOptional(result);
+        textPair.setTextForUserOptional(result);
+
+        return textPair;
+    }
+
+    private TextPair buildTextPairForTheOneEventIfOffline(
+            EventRequest request,
+            ZonedDateTime lastOnlineTime,
+            boolean deviceHasClock
+    ) {
+        Event event = request.getEvents().getFirst();
+        ZonedDateTime eventSendingTime = LocalDateTime.parse(
+                event.getTime(),
+                FormattersKt.dateTimeFormatter
+        ).atZone(clock.getZone());
+
+        ZonedDateTime eventReceivingTime = ZonedDateTime.now(clock);
+        String deviceId = request.getDeviceId();
+        return switch (event.getEventType()) {
+            case EventType.PING -> buildTextPairForTheOnePingEventIfOffline(
+                    deviceId,
+                    lastOnlineTime,
+                    deviceHasClock ? eventSendingTime : eventReceivingTime);
+            case EventType.START -> buildTextPairForTheOneStartEvent(
+                    deviceId,
+                    lastOnlineTime,
+                    deviceHasClock ? eventSendingTime : eventReceivingTime);
+
+            default -> {
+                TextPair textPair = new TextPair();
+                textPair.setTextForAdminOptional(Optional.empty());
+                textPair.setTextForUserOptional(Optional.empty());
+
+                yield textPair;
+            }
+        };
+    }
+
+    private TextPair buildTextPairForTheOneEventIfOnline(
+            EventRequest request,
+            ZonedDateTime lastOnlineTime,
+            boolean deviceHasClock
+    ) {
+        Event event = request.getEvents().getFirst();
+        if (event.getEventType() != EventType.START) {
+            TextPair textPair = new TextPair();
+            textPair.setTextForAdminOptional(Optional.empty());
+            textPair.setTextForUserOptional(Optional.empty());
+
+            return textPair;
+        }
+
+        ZonedDateTime eventSendingTime = LocalDateTime.parse(
+                event.getTime(),
+                FormattersKt.dateTimeFormatter
+        ).atZone(clock.getZone());
+
+        ZonedDateTime eventReceivingTime = ZonedDateTime.now(clock);
+        return buildTextPairForTheOneStartEvent(
+                request.getDeviceId(),
+                lastOnlineTime,
+                deviceHasClock ? eventSendingTime : eventReceivingTime);
+    }
+
+    private TextPair buildTextPairForTheMultipleEvents(
+            EventRequest request,
+            DeviceProcessor deviceProcessor,
+            boolean isFirstRequest,
+            boolean deviceHasClock
+    ) {
+        if (!deviceHasClock) {
+            return buildTextForMultipleEventsFromDeviceWithoutClock(
+                    request,
+                    deviceProcessor,
+                    isFirstRequest
+            );
+        }
+
+        ZonedDateTime timeFirstEvent = LocalDateTime.parse(
+                request.getEvents().getFirst().getTime(),
+                FormattersKt.dateTimeFormatter
+        ).atZone(clock.getZone());
+
+        ZonedDateTime beginning = isFirstRequest
+                ? timeFirstEvent
+                : deviceProcessor.getLastOnlineTime();
+
+        ZonedDateTime end = LocalDateTime.parse(
+                request.getEvents().getLast().getTime(),
+                FormattersKt.dateTimeFormatter
+        ).atZone(clock.getZone());
+
+        boolean isTheOneDay = beginning.toLocalDate().isEqual(end.toLocalDate());
+
+        StringBuilder result = new StringBuilder(buildHeader(
+                request,
+                beginning,
+                end,
+                isTheOneDay,
+                isFirstRequest
+        ));
+
+        List<Event> events = request.getEvents();
+        boolean linesAdded = false;
+        for (int i = 0; i < events.size(); i++) {
+            Event currentEvent = events.get(i);
+            if (EventType.START == currentEvent.getEventType()) {
+                Optional<String> lineTextOptional = buildTextForStart(
+                        i,
+                        events,
+                        beginning,
+                        isTheOneDay,
+                        isFirstRequest
+                );
+                if (lineTextOptional.isPresent()) {
+                    if (!linesAdded) {
+                        linesAdded = true;
+                        result.append("\n");
+                    }
+                    result.append(lineTextOptional.get());
+                }
+            }
+        }
+
+        Optional<String> resultStringOptional = Optional.of(result.toString());
+
+        TextPair textPair = new TextPair();
+        textPair.setTextForAdminOptional(resultStringOptional);
+        textPair.setTextForUserOptional(resultStringOptional);
+
+        return textPair;
+    }
+
+    private StringBuilder buildHeader(
+            EventRequest request,
+            ZonedDateTime beginning,
+            ZonedDateTime end,
+            boolean isTheOneDay,
+            boolean isFirstRequest
+
+    ){
+        StringBuilder result = new StringBuilder(request.getDeviceId())
+                .append(":\n");
+
+        DateTimeFormatter formatter = isTheOneDay
+                ? formatterOnlyTimeWithoutSeconds
+                : formatterWithoutSeconds;
+
+        if (isFirstRequest) {
+            return result.append(NO_INTERNET_SINCE_FIRST_START)
+                    .append(AT)
+                    .append(formatter.format(beginning))
+                    .append(UNTIL)
+                    .append(formatter.format(end));
+        }
+
+        return result.append(NO_INTERNET)
+                .append(formatter.format(beginning))
+                .append(AND)
+                .append(formatter.format(end));
+    }
+
+    private TextPair buildTextForMultipleEventsFromDeviceWithoutClock(
+            EventRequest request,
+            DeviceProcessor deviceProcessor,
+            boolean isFirstRequest
+    ) {
+        StringBuilder result = new StringBuilder(request.getDeviceId())
+                .append(DASH);
+        if (isFirstRequest) {
+            result.append(NO_INTERNET_SINCE_FIRST_START)
+                    .append(UNTIL)
+                    .append(ZonedDateTime.now(clock).format(formatterOnlyTimeWithoutSeconds));
+        } else {
+
+            ZonedDateTime lastOnlineTime = deviceProcessor.getLastOnlineTime();
+            ZonedDateTime nowTime = ZonedDateTime.now(clock);
+
+            DateTimeFormatter formatter = lastOnlineTime.toLocalDate().isEqual(nowTime.toLocalDate())
+                    ? formatterOnlyTimeWithoutSeconds
+                    : formatterWithoutSeconds;
+
+            result.append(NO_INTERNET)
+                    .append(formatter.format(lastOnlineTime))
+                    .append(AND)
+                    .append(formatter.format(nowTime));
+
+        }
+        int nRestarts = countRestarts(request.getEvents(), isFirstRequest);
+        if (0 != nRestarts) {
+            result.append(COUNT_RESTARTS)
+                    .append(nRestarts)
+                    .append(TIMES);
+
+            int end = nRestarts & 7;
+            if (2 == end || 3 == end || 4 == end) {
+                result.append("а");
+            }
+        }
+        Optional<String> resultStringOptional = Optional.of(result.toString());
+        TextPair textPair = new TextPair();
+        textPair.setTextForAdminOptional(resultStringOptional);
+        textPair.setTextForUserOptional(resultStringOptional);
+
+        return textPair;
+    }
+
+    private Optional<String> buildTextForStart(
+            int i,
+            List<Event> events,
+            ZonedDateTime beginning,
+            boolean isTheOneDay,
+            boolean isFirstRequest
+    ) {
+
+        if (0 == i) {
+            if (isFirstRequest) {
+                return Optional.empty();
+            }
+        } else {
+            beginning = LocalDateTime.parse(
+                    events.get(i-1).getTime(),
+                    FormattersKt.dateTimeFormatter
+            ).atZone(clock.getZone());
+        }
+
+        ZonedDateTime end = LocalDateTime.parse(
+                events.get(i).getTime(),
+                FormattersKt.dateTimeFormatter
+        ).atZone(clock.getZone());
+
+        DateTimeFormatter formatter = isTheOneDay
+                ? formatterOnlyTimeWithoutSeconds
+                : formatterWithoutSeconds;
+
+        String timeBeginningString = formatter.format(beginning);
+        String timeEndString = formatter.format(end);
+
+        return Optional.of(
+                "\n"
+                        + NO_POWER
+                        + timeBeginningString
+                        + AND
+                        + timeEndString
+                        + buildSuffixIfPauseIsShort(timeBeginningString, timeEndString, isTheOneDay)
+        );
+    }
+
+    private int countRestarts(List<Event> events, boolean isFirstRequest) {
+        int result = (int) events.stream()
+                .filter(event -> EventType.START.equals(event.getEventType()))
+                .count();
+        if (EventType.START == events.getFirst().getEventType() && isFirstRequest) {
+            result--;
+        }
+        return result;
+    }
+
+    private String buildSuffixIfPauseIsShort(
+            String timeBeginningString,
+            String timeEndString,
+            boolean isTheOneDay
+    ) {
+        if (isTheOneDay) {
+            LocalTime timeBeginning = LocalTime.parse(timeBeginningString, formatterOnlyTimeWithoutSeconds);
+            LocalTime timeEnd = LocalTime.parse(timeEndString, formatterOnlyTimeWithoutSeconds);
+            if (timeBeginning.plusMinutes(1).isAfter(timeEnd)
+                    || timeBeginning.plusMinutes(1).equals(timeEnd)) {
+                return NO_POWER_LESS_ONE_MINUTE;
+            }
+            if (timeBeginning.plusMinutes(2).isAfter(timeEnd)
+                    || timeBeginning.plusMinutes(2).equals(timeEnd)) {
+                return NO_POWER_LESS_TWO_MINUTES;
+            }
+            return "";
+        } else {
+            LocalDateTime timeBeginning = LocalDateTime.parse(timeBeginningString, formatterWithoutSeconds);
+            LocalDateTime timeEnd = LocalDateTime.parse(timeEndString, formatterWithoutSeconds);
+            if (timeBeginning.plusMinutes(1).isAfter(timeEnd)
+                    || timeBeginning.plusMinutes(1).isEqual(timeEnd)) {
+                return NO_POWER_LESS_ONE_MINUTE;
+            }
+            if (timeBeginning.plusMinutes(2).isAfter(timeEnd)
+                    || timeBeginning.plusMinutes(2).isEqual(timeEnd)) {
+                return NO_POWER_LESS_TWO_MINUTES;
+            }
+            return "";
+        }
+    }
+
+    private TextPair buildTextPairForTheOnePingEventIfOffline(
+            String deviceId,
+            ZonedDateTime beginning,
+            ZonedDateTime end
+    ) {
+        StringBuilder result = new StringBuilder(deviceId)
+                .append(DASH)
+                .append(NO_INTERNET);
+
+        DateTimeFormatter formatter = beginning.toLocalDate().isEqual(end.toLocalDate())
+                ? formatterOnlyTimeWithoutSeconds
+                : formatterWithoutSeconds;
+
+        result.append(formatter.format(beginning))
+                .append(AND)
+                .append(formatter.format(end));
+
+        Optional<String> resultStringOptional = Optional.of(result.toString());
+        TextPair textPair = new TextPair();
+        textPair.setTextForAdminOptional(resultStringOptional);
+        textPair.setTextForUserOptional(resultStringOptional);
+
+        return textPair;
+
+    }
+
+    private TextPair buildTextPairForTheOneStartEvent(
+            String deviceId,
+            ZonedDateTime beginning,
+            ZonedDateTime end
+    ) {
+        StringBuilder result = new StringBuilder(deviceId)
+                .append(DASH)
+                .append(NO_POWER);
+
+        boolean isTheOneDay = beginning.toLocalDate().isEqual(end.toLocalDate());
+        DateTimeFormatter formatter = isTheOneDay
+                ? formatterOnlyTimeWithoutSeconds
+                : formatterWithoutSeconds;
+
+        String timeBeginningString = formatter.format(beginning);
+        String timeEndString = formatter.format(end);
+
+        result.append(timeBeginningString)
+                .append(AND)
+                .append(timeEndString)
+                .append(buildSuffixIfPauseIsShort(timeBeginningString, timeEndString, isTheOneDay));
+
+        Optional<String> resultStringOptional = Optional.of(result.toString());
+        TextPair textPair = new TextPair();
+        textPair.setTextForAdminOptional(resultStringOptional);
+        textPair.setTextForUserOptional(resultStringOptional);
+
+        return textPair;
+    }
+
+    private void sendMessages(
+            TextPair textPair,
+            List<Chat> chatsList,
+            Map<Long, Integer> chatIdToRepliedMessageIdMap
+    ) {
+        for (Chat chat : chatsList) {
+            Long chatId = chat.chatId();
+            Integer repliedMessageId = chatIdToRepliedMessageIdMap.get(chatId);
+            if (null != repliedMessageId) {
+                chatIdToRepliedMessageIdMap.put(chatId, null);
+            }
+            Optional<String> textForAdminOptional = textPair.getTextForAdminOptional();
+            if (chat.isAdmin() && textForAdminOptional.isPresent()) {
+                try {
+                    telegramNotifier.send(textForAdminOptional.get(), chatId, Optional.ofNullable(repliedMessageId));
+                } catch (TelegramApiException e) {
+                    log.error(
+                            "Failed to send text to Telegram '{}' to admin {}",
+                            textForAdminOptional.get(),
+                            chatId,
+                            e
+                    );
+                }
+            }
+            Optional<String> textForUserOptional = textPair.getTextForUserOptional();
+            if (!chat.isAdmin() && textForUserOptional.isPresent()) {
+                try {
+                    telegramNotifier.send(textForUserOptional.get(), chatId, Optional.ofNullable(repliedMessageId));
+                } catch (TelegramApiException e) {
+                    log.error(
+                            "Failed to send text to Telegram '{}' to user {}",
+                            textForUserOptional.get(),
+                            chatId,
+                            e
+                    );
+                }
+            }
+        }
+    }
 }

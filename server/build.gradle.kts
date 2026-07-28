@@ -17,6 +17,8 @@ dependencies {
     implementation(libs.kotlinxSerialization)
     implementation(libs.telegrambots.client)
     implementation(libs.telegrambots.meta)
+    implementation(libs.spring.boot.starter.jdbc)
+    runtimeOnly(libs.postgresql)
 
     compileOnly(libs.lombok)
     annotationProcessor(libs.lombok)
