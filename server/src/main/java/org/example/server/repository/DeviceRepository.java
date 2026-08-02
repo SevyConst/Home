@@ -1,6 +1,7 @@
 package org.example.server.repository;
 
 import org.example.server.model.dto.Chat;
+import org.example.server.model.dto.DeviceInfo;
 import org.springframework.dao.EmptyResultDataAccessException;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Repository;
@@ -34,17 +35,33 @@ public class DeviceRepository {
         );
     }
 
-    public Optional<Boolean> getHasClock(String deviceId) {
+    public Optional<DeviceInfo> getDeviceInfo(String deviceId) {
         String sql = """
-            SELECT has_clock
+            SELECT has_clock, has_error
             FROM device
             WHERE id = ?
             """;
         try {
-            return Optional.ofNullable(jdbcTemplate.queryForObject(sql, Boolean.class, deviceId));
+            return Optional.ofNullable(jdbcTemplate.queryForObject(
+                    sql,
+                    (rs, _) -> new DeviceInfo(
+                            rs.getBoolean("has_clock"),
+                            rs.getBoolean("has_error")
+                    ),
+                    deviceId
+            ));
         } catch (EmptyResultDataAccessException e) {
             return Optional.empty();
         }
+    }
+
+    public void updateHasError(String deviceId, boolean hasError) {
+        String sql = """
+            UPDATE device
+            SET has_error = ?
+            WHERE id = ?
+            """;
+        jdbcTemplate.update(sql, hasError, deviceId);
     }
 
 }

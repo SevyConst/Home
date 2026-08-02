@@ -9,9 +9,10 @@ import model.Event;
 import model.EventRequest;
 import model.EventType;
 import org.example.FormattersKt;
-import org.example.server.exception.DeviceInfoIsEmpty;
+import org.example.server.exception.DeviceChatsNotFoundException;
 import org.example.server.exception.DeviceNotFoundException;
 import org.example.server.model.dto.Chat;
+import org.example.server.model.dto.DeviceInfo;
 import org.example.server.repository.DeviceRepository;
 import org.springframework.stereotype.Service;
 import org.telegram.telegrambots.meta.exceptions.TelegramApiException;
@@ -61,38 +62,39 @@ public class EventService {
     public void processEvents(EventRequest request) {
 
         String deviceId = request.getDeviceId();
-        Optional<Boolean> hasClockOptional = deviceRepository.getHasClock(deviceId);
-        if (hasClockOptional.isEmpty()) {
-            throw new DeviceNotFoundException(deviceId);
-        }
 
-        List<Chat> chatsList = deviceRepository.getDeviceChats(deviceId);
-        if (chatsList.isEmpty()) {
-            throw new DeviceInfoIsEmpty("server error: can't find info about device " + deviceId
-                    + "(but the device has been found)");
-        }
+        while (true) {
+            DeviceProcessor deviceProcessor = deviceIdToDeviceProcessorMap.computeIfAbsent(
+                    deviceId,
+                    id -> new DeviceProcessor(id, telegramNotifier, deviceRepository));
 
-        boolean isFirstRequest = false;
-        DeviceProcessor deviceProcessor = deviceIdToDeviceProcessorMap.get(deviceId);
-
-        if (null == deviceProcessor) {
-            synchronized(this) {
-                deviceProcessor = deviceIdToDeviceProcessorMap.get(deviceId);
-                if (null == deviceProcessor) {
-                    isFirstRequest = true;
-                    deviceProcessor = new DeviceProcessor(deviceId, telegramNotifier, deviceRepository);
-                    deviceIdToDeviceProcessorMap.put(deviceId, deviceProcessor);
-                }
-                processEvents(deviceProcessor, request, isFirstRequest, chatsList, hasClockOptional.get());
-                return;
-            }
-        }
-
-        try {
             deviceProcessor.getLock().lock();
-            processEvents(deviceProcessor, request, false, chatsList, hasClockOptional.get());
-        } finally {
-            deviceProcessor.getLock().unlock();
+            try {
+                if (deviceProcessor.isRemoved()) {
+                    continue;
+                }
+
+                Optional<DeviceInfo> deviceInfoOptional = deviceRepository.getDeviceInfo(deviceId);
+                if (deviceInfoOptional.isEmpty()) {
+                    deviceProcessor.setRemoved(true);
+                    deviceIdToDeviceProcessorMap.remove(deviceId, deviceProcessor);
+                    deviceProcessor.shutdown();
+                    throw new DeviceNotFoundException(deviceId);
+                }
+
+                List<Chat> chatsList = deviceRepository.getDeviceChats(deviceId);
+                if (chatsList.isEmpty()) {
+                    throw new DeviceChatsNotFoundException("server error: can't find chats for device " + deviceId
+                            + " (but the device has been found)");
+                }
+
+                boolean isFirstRequest = !deviceProcessor.isFirstRequestProcessed();
+                processEvents(deviceProcessor, request, isFirstRequest, chatsList, deviceInfoOptional.get());
+                deviceProcessor.setFirstRequestProcessed(true);
+                return;
+            } finally {
+                deviceProcessor.getLock().unlock();
+            }
         }
     }
 
@@ -101,17 +103,21 @@ public class EventService {
             EventRequest request,
             boolean isFirstRequest,
             List<Chat> chatsList,
-            boolean deviceHasClock
+            DeviceInfo deviceInfo
     ) {
-        if (deviceProcessor.isHasError()) {
+        String deviceId = request.getDeviceId();
+
+        if (deviceInfo.hasError()) {
             return;
         }
+
+        boolean deviceHasClock = deviceInfo.hasClock();
 
         List<Event> events = request.getEvents();
 
         Optional<Integer> firstErrorIndex = getFirstErrorIndex(events);
         if (firstErrorIndex.isPresent()) {
-            deviceProcessor.setHasError(true);
+            deviceRepository.updateHasError(deviceId, true);
             TextPair textPair = processError(request, firstErrorIndex.get());
             sendMessages(textPair, chatsList, deviceProcessor.getChatIdToRepliedMessageIdMap());
             return;
@@ -120,8 +126,6 @@ public class EventService {
         TextPair textPair = 1 == events.size()
                 ? buildTextPairForTheOneEvent(request, deviceProcessor, isFirstRequest, deviceHasClock)
                 : buildTextPairForTheMultipleEvents(request, deviceProcessor, isFirstRequest, deviceHasClock);
-
-        String deviceId = request.getDeviceId();
 
         Optional<String> textForAdmin = textPair.getTextForAdminOptional();
         if (isFirstRequest) {

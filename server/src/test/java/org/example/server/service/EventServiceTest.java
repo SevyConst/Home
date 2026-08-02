@@ -4,8 +4,13 @@ import model.Event;
 import model.EventRequest;
 import model.EventType;
 import org.example.FormattersKt;
+import org.example.server.exception.DeviceNotFoundException;
 import org.example.server.model.dto.Chat;
+import org.example.server.model.dto.DeviceInfo;
 import org.example.server.repository.DeviceRepository;
+import org.junit.jupiter.api.AfterEach;
+import org.junit.jupiter.api.Assertions;
+import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.mockito.InOrder;
 import org.mockito.Mockito;
@@ -13,6 +18,10 @@ import org.mockito.Mockito;
 import java.time.*;
 import java.util.List;
 import java.util.Optional;
+import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicInteger;
+import java.util.concurrent.atomic.AtomicReference;
 
 class EventServiceTest {
 
@@ -32,6 +41,18 @@ class EventServiceTest {
     private final DeviceRepository deviceRepositoryMock = Mockito.mock(DeviceRepository.class);
     private final Clock clockMock = Mockito.mock(Clock.class);
 
+    private Long periodMillisecondsBeforeTest;
+
+    @BeforeEach
+    void savePeriodMilliseconds() {
+        periodMillisecondsBeforeTest = EventService.getPeriodMilliseconds();
+    }
+
+    @AfterEach
+    void restorePeriodMilliseconds() {
+        EventService.setPeriodMilliseconds(periodMillisecondsBeforeTest);
+    }
+
     @Test
     void pingRequestPingRequest() throws Exception {
         final EventService eventService = new EventService(telegramNotifierMock, deviceRepositoryMock, clockMock);
@@ -46,7 +67,7 @@ class EventServiceTest {
                 DEVICE_ID
         );
 
-        Mockito.when(deviceRepositoryMock.getHasClock(DEVICE_ID)).thenReturn(Optional.of(true));
+        Mockito.when(deviceRepositoryMock.getDeviceInfo(DEVICE_ID)).thenReturn(Optional.of(new DeviceInfo(true, false)));
         Mockito.when(deviceRepositoryMock.getDeviceChats(DEVICE_ID))
                 .thenReturn(List.of(
                         new Chat(CHAT_ID_ADMIN, true),
@@ -97,7 +118,7 @@ class EventServiceTest {
                 DEVICE_ID
         );
 
-        Mockito.when(deviceRepositoryMock.getHasClock(DEVICE_ID)).thenReturn(Optional.of(false));
+        Mockito.when(deviceRepositoryMock.getDeviceInfo(DEVICE_ID)).thenReturn(Optional.of(new DeviceInfo(false, false)));
         Mockito.when(deviceRepositoryMock.getDeviceChats(DEVICE_ID))
                 .thenReturn(List.of(
                         new Chat(CHAT_ID_ADMIN, true),
@@ -158,7 +179,7 @@ class EventServiceTest {
 
         ZonedDateTime timeReceiving = timeSending.plusMinutes(1);
 
-        Mockito.when(deviceRepositoryMock.getHasClock(DEVICE_ID)).thenReturn(Optional.of(true));
+        Mockito.when(deviceRepositoryMock.getDeviceInfo(DEVICE_ID)).thenReturn(Optional.of(new DeviceInfo(true, false)));
         Mockito.when(deviceRepositoryMock.getDeviceChats(DEVICE_ID))
                 .thenReturn(List.of(
                         new Chat(CHAT_ID_ADMIN, true),
@@ -227,7 +248,7 @@ class EventServiceTest {
 
         ZonedDateTime timeReceiving = timeSending.plusMinutes(1);
 
-        Mockito.when(deviceRepositoryMock.getHasClock(DEVICE_ID)).thenReturn(Optional.of(false));
+        Mockito.when(deviceRepositoryMock.getDeviceInfo(DEVICE_ID)).thenReturn(Optional.of(new DeviceInfo(false, false)));
         Mockito.when(deviceRepositoryMock.getDeviceChats(DEVICE_ID))
                 .thenReturn(List.of(
                         new Chat(CHAT_ID_ADMIN, true),
@@ -290,7 +311,7 @@ class EventServiceTest {
 
         ZonedDateTime timeReceiving = ANOTHER_DAY.plusMinutes(1);
 
-        Mockito.when(deviceRepositoryMock.getHasClock(DEVICE_ID)).thenReturn(Optional.of(true));
+        Mockito.when(deviceRepositoryMock.getDeviceInfo(DEVICE_ID)).thenReturn(Optional.of(new DeviceInfo(true, false)));
         Mockito.when(deviceRepositoryMock.getDeviceChats(DEVICE_ID))
                 .thenReturn(List.of(
                         new Chat(CHAT_ID_ADMIN, true),
@@ -350,8 +371,8 @@ class EventServiceTest {
 
         ZonedDateTime timeFirstRequestReceiving = INIT_TIME.plusMinutes(1);
 
-        Mockito.when(deviceRepositoryMock.getHasClock(DEVICE_ID))
-                .thenReturn(Optional.of(true));
+        Mockito.when(deviceRepositoryMock.getDeviceInfo(DEVICE_ID))
+                .thenReturn(Optional.of(new DeviceInfo(true, false)));
         Mockito.when(deviceRepositoryMock.getDeviceChats(DEVICE_ID))
                 .thenReturn(List.of(
                         new Chat(CHAT_ID_ADMIN, true),
@@ -461,8 +482,8 @@ class EventServiceTest {
 
         ZonedDateTime timeFirstRequestReceiving = INIT_TIME.plusMinutes(1);
 
-        Mockito.when(deviceRepositoryMock.getHasClock(DEVICE_ID))
-                .thenReturn(Optional.of(false));
+        Mockito.when(deviceRepositoryMock.getDeviceInfo(DEVICE_ID))
+                .thenReturn(Optional.of(new DeviceInfo(false, false)));
         Mockito.when(deviceRepositoryMock.getDeviceChats(DEVICE_ID))
                 .thenReturn(List.of(
                         new Chat(CHAT_ID_ADMIN, true),
@@ -573,8 +594,8 @@ class EventServiceTest {
 
         ZonedDateTime timeFirstRequestReceiving = INIT_TIME.plusMinutes(1);
 
-        Mockito.when(deviceRepositoryMock.getHasClock(DEVICE_ID))
-                .thenReturn(Optional.of(true));
+        Mockito.when(deviceRepositoryMock.getDeviceInfo(DEVICE_ID))
+                .thenReturn(Optional.of(new DeviceInfo(true, false)));
         Mockito.when(deviceRepositoryMock.getDeviceChats(DEVICE_ID))
                 .thenReturn(List.of(
                         new Chat(CHAT_ID_ADMIN, true),
@@ -683,8 +704,8 @@ class EventServiceTest {
 
         ZonedDateTime timeFirstRequestReceiving = INIT_TIME.plusMinutes(1);
 
-        Mockito.when(deviceRepositoryMock.getHasClock(DEVICE_ID))
-                .thenReturn(Optional.of(false));
+        Mockito.when(deviceRepositoryMock.getDeviceInfo(DEVICE_ID))
+                .thenReturn(Optional.of(new DeviceInfo(false, false)));
         Mockito.when(deviceRepositoryMock.getDeviceChats(DEVICE_ID))
                 .thenReturn(List.of(
                         new Chat(CHAT_ID_ADMIN, true),
@@ -793,8 +814,8 @@ class EventServiceTest {
 
         ZonedDateTime timeFirstRequestReceiving = INIT_TIME.plusMinutes(1);
 
-        Mockito.when(deviceRepositoryMock.getHasClock(DEVICE_ID))
-                .thenReturn(Optional.of(true));
+        Mockito.when(deviceRepositoryMock.getDeviceInfo(DEVICE_ID))
+                .thenReturn(Optional.of(new DeviceInfo(true, false)));
         Mockito.when(deviceRepositoryMock.getDeviceChats(DEVICE_ID))
                 .thenReturn(List.of(
                         new Chat(CHAT_ID_ADMIN, true),
@@ -876,8 +897,8 @@ class EventServiceTest {
 
         ZonedDateTime timeFirstRequestReceiving = INIT_TIME.plusMinutes(1);
 
-        Mockito.when(deviceRepositoryMock.getHasClock(DEVICE_ID))
-                .thenReturn(Optional.of(false));
+        Mockito.when(deviceRepositoryMock.getDeviceInfo(DEVICE_ID))
+                .thenReturn(Optional.of(new DeviceInfo(false, false)));
         Mockito.when(deviceRepositoryMock.getDeviceChats(DEVICE_ID))
                 .thenReturn(List.of(
                         new Chat(CHAT_ID_ADMIN, true),
@@ -961,8 +982,8 @@ class EventServiceTest {
 
         ZonedDateTime timeFirstRequestReceiving = INIT_TIME.plusMinutes(1);
 
-        Mockito.when(deviceRepositoryMock.getHasClock(DEVICE_ID))
-                .thenReturn(Optional.of(true));
+        Mockito.when(deviceRepositoryMock.getDeviceInfo(DEVICE_ID))
+                .thenReturn(Optional.of(new DeviceInfo(true, false)));
         Mockito.when(deviceRepositoryMock.getDeviceChats(DEVICE_ID))
                 .thenReturn(List.of(
                         new Chat(CHAT_ID_ADMIN, true),
@@ -1041,8 +1062,8 @@ class EventServiceTest {
 
         ZonedDateTime timeFirstRequestReceiving = INIT_TIME.plusMinutes(1);
 
-        Mockito.when(deviceRepositoryMock.getHasClock(DEVICE_ID))
-                .thenReturn(Optional.of(false));
+        Mockito.when(deviceRepositoryMock.getDeviceInfo(DEVICE_ID))
+                .thenReturn(Optional.of(new DeviceInfo(false, false)));
         Mockito.when(deviceRepositoryMock.getDeviceChats(DEVICE_ID))
                 .thenReturn(List.of(
                         new Chat(CHAT_ID_ADMIN, true),
@@ -1123,8 +1144,8 @@ class EventServiceTest {
 
         ZonedDateTime timeFirstRequestReceiving = INIT_TIME.plusMinutes(1);
 
-        Mockito.when(deviceRepositoryMock.getHasClock(DEVICE_ID))
-                .thenReturn(Optional.of(true));
+        Mockito.when(deviceRepositoryMock.getDeviceInfo(DEVICE_ID))
+                .thenReturn(Optional.of(new DeviceInfo(true, false)));
         Mockito.when(deviceRepositoryMock.getDeviceChats(DEVICE_ID))
                 .thenReturn(List.of(
                         new Chat(CHAT_ID_ADMIN, true),
@@ -1234,8 +1255,8 @@ class EventServiceTest {
 
         ZonedDateTime timeFirstRequestReceiving = INIT_TIME.plusMinutes(1);
 
-        Mockito.when(deviceRepositoryMock.getHasClock(DEVICE_ID))
-                .thenReturn(Optional.of(false));
+        Mockito.when(deviceRepositoryMock.getDeviceInfo(DEVICE_ID))
+                .thenReturn(Optional.of(new DeviceInfo(false, false)));
         Mockito.when(deviceRepositoryMock.getDeviceChats(DEVICE_ID))
                 .thenReturn(List.of(
                         new Chat(CHAT_ID_ADMIN, true),
@@ -1344,8 +1365,8 @@ class EventServiceTest {
 
         ZonedDateTime timeFirstRequestReceiving = INIT_TIME.plusMinutes(1);
 
-        Mockito.when(deviceRepositoryMock.getHasClock(DEVICE_ID))
-                .thenReturn(Optional.of(true));
+        Mockito.when(deviceRepositoryMock.getDeviceInfo(DEVICE_ID))
+                .thenReturn(Optional.of(new DeviceInfo(true, false)));
         Mockito.when(deviceRepositoryMock.getDeviceChats(DEVICE_ID))
                 .thenReturn(List.of(
                         new Chat(CHAT_ID_ADMIN, true),
@@ -1441,8 +1462,8 @@ class EventServiceTest {
 
         ZonedDateTime timeFirstRequestReceiving = INIT_TIME.plusMinutes(1);
 
-        Mockito.when(deviceRepositoryMock.getHasClock(DEVICE_ID))
-                .thenReturn(Optional.of(false));
+        Mockito.when(deviceRepositoryMock.getDeviceInfo(DEVICE_ID))
+                .thenReturn(Optional.of(new DeviceInfo(false, false)));
         Mockito.when(deviceRepositoryMock.getDeviceChats(DEVICE_ID))
                 .thenReturn(List.of(
                         new Chat(CHAT_ID_ADMIN, true),
@@ -1548,8 +1569,8 @@ class EventServiceTest {
 
         ZonedDateTime timeRequestReceiving = INIT_TIME.plusMinutes(1);
 
-        Mockito.when(deviceRepositoryMock.getHasClock(DEVICE_ID))
-                .thenReturn(Optional.of(true));
+        Mockito.when(deviceRepositoryMock.getDeviceInfo(DEVICE_ID))
+                .thenReturn(Optional.of(new DeviceInfo(true, false)));
         Mockito.when(deviceRepositoryMock.getDeviceChats(DEVICE_ID))
                 .thenReturn(List.of(
                         new Chat(CHAT_ID_ADMIN, true),
@@ -1632,8 +1653,8 @@ class EventServiceTest {
 
         ZonedDateTime timeRequestReceiving = INIT_TIME.plusMinutes(1);
 
-        Mockito.when(deviceRepositoryMock.getHasClock(DEVICE_ID))
-                .thenReturn(Optional.of(false));
+        Mockito.when(deviceRepositoryMock.getDeviceInfo(DEVICE_ID))
+                .thenReturn(Optional.of(new DeviceInfo(false, false)));
         Mockito.when(deviceRepositoryMock.getDeviceChats(DEVICE_ID))
                 .thenReturn(List.of(
                         new Chat(CHAT_ID_ADMIN, true),
@@ -1697,8 +1718,8 @@ class EventServiceTest {
 
         ZonedDateTime timeFirstRequestReceiving = INIT_TIME.plusMinutes(1);
 
-        Mockito.when(deviceRepositoryMock.getHasClock(DEVICE_ID))
-                .thenReturn(Optional.of(true));
+        Mockito.when(deviceRepositoryMock.getDeviceInfo(DEVICE_ID))
+                .thenReturn(Optional.of(new DeviceInfo(true, false)));
         Mockito.when(deviceRepositoryMock.getDeviceChats(DEVICE_ID))
                 .thenReturn(List.of(
                         new Chat(CHAT_ID_ADMIN, true),
@@ -1852,8 +1873,8 @@ class EventServiceTest {
 
         ZonedDateTime timeFirstRequestReceiving = INIT_TIME.plusMinutes(1);
 
-        Mockito.when(deviceRepositoryMock.getHasClock(DEVICE_ID))
-                .thenReturn(Optional.of(false));
+        Mockito.when(deviceRepositoryMock.getDeviceInfo(DEVICE_ID))
+                .thenReturn(Optional.of(new DeviceInfo(false, false)));
         Mockito.when(deviceRepositoryMock.getDeviceChats(DEVICE_ID))
                 .thenReturn(List.of(
                         new Chat(CHAT_ID_ADMIN, true),
@@ -1989,8 +2010,8 @@ class EventServiceTest {
 
         ZonedDateTime timeFirstRequestReceiving = INIT_TIME.plusMinutes(1);
 
-        Mockito.when(deviceRepositoryMock.getHasClock(DEVICE_ID))
-                .thenReturn(Optional.of(true));
+        Mockito.when(deviceRepositoryMock.getDeviceInfo(DEVICE_ID))
+                .thenReturn(Optional.of(new DeviceInfo(true, false)));
         Mockito.when(deviceRepositoryMock.getDeviceChats(DEVICE_ID))
                 .thenReturn(List.of(
                         new Chat(CHAT_ID_ADMIN, true),
@@ -2116,8 +2137,8 @@ class EventServiceTest {
 
         ZonedDateTime timeFirstRequestReceiving = INIT_TIME.plusMinutes(1);
 
-        Mockito.when(deviceRepositoryMock.getHasClock(DEVICE_ID))
-                .thenReturn(Optional.of(false));
+        Mockito.when(deviceRepositoryMock.getDeviceInfo(DEVICE_ID))
+                .thenReturn(Optional.of(new DeviceInfo(false, false)));
         Mockito.when(deviceRepositoryMock.getDeviceChats(DEVICE_ID))
                 .thenReturn(List.of(
                         new Chat(CHAT_ID_ADMIN, true),
@@ -2228,8 +2249,8 @@ class EventServiceTest {
 
         ZonedDateTime timeFirstRequestReceiving = INIT_TIME.plusMinutes(1);
 
-        Mockito.when(deviceRepositoryMock.getHasClock(DEVICE_ID))
-                .thenReturn(Optional.of(true));
+        Mockito.when(deviceRepositoryMock.getDeviceInfo(DEVICE_ID))
+                .thenReturn(Optional.of(new DeviceInfo(true, false)));
         Mockito.when(deviceRepositoryMock.getDeviceChats(DEVICE_ID))
                 .thenReturn(List.of(
                         new Chat(CHAT_ID_ADMIN, true),
@@ -2350,8 +2371,8 @@ class EventServiceTest {
 
         ZonedDateTime timeFirstRequestReceiving = INIT_TIME.plusMinutes(1);
 
-        Mockito.when(deviceRepositoryMock.getHasClock(DEVICE_ID))
-                .thenReturn(Optional.of(true));
+        Mockito.when(deviceRepositoryMock.getDeviceInfo(DEVICE_ID))
+                .thenReturn(Optional.of(new DeviceInfo(true, false)));
         Mockito.when(deviceRepositoryMock.getDeviceChats(DEVICE_ID))
                 .thenReturn(List.of(
                         new Chat(CHAT_ID_ADMIN, true),
@@ -2481,8 +2502,8 @@ class EventServiceTest {
 
         ZonedDateTime timeReceiving = timeSending.plusMinutes(1L);
 
-        Mockito.when(deviceRepositoryMock.getHasClock(DEVICE_ID))
-                .thenReturn(Optional.of(true));
+        Mockito.when(deviceRepositoryMock.getDeviceInfo(DEVICE_ID))
+                .thenReturn(Optional.of(new DeviceInfo(true, false)));
         Mockito.when(deviceRepositoryMock.getDeviceChats(DEVICE_ID))
                 .thenReturn(List.of(
                         new Chat(CHAT_ID_ADMIN, true),
@@ -2555,8 +2576,8 @@ class EventServiceTest {
 
         ZonedDateTime timeFirstRequestReceiving = INIT_TIME.plusMinutes(1);
 
-        Mockito.when(deviceRepositoryMock.getHasClock(DEVICE_ID))
-                .thenReturn(Optional.of(true));
+        Mockito.when(deviceRepositoryMock.getDeviceInfo(DEVICE_ID))
+                .thenReturn(Optional.of(new DeviceInfo(true, false)));
         Mockito.when(deviceRepositoryMock.getDeviceChats(DEVICE_ID))
                 .thenReturn(List.of(
                         new Chat(CHAT_ID_ADMIN, true),
@@ -2683,8 +2704,8 @@ class EventServiceTest {
 
         ZonedDateTime timeFirstRequestReceiving = timeFirstRequestSending.plusMinutes(1);
 
-        Mockito.when(deviceRepositoryMock.getHasClock(DEVICE_ID))
-                .thenReturn(Optional.of(true));
+        Mockito.when(deviceRepositoryMock.getDeviceInfo(DEVICE_ID))
+                .thenReturn(Optional.of(new DeviceInfo(true, false)));
         Mockito.when(deviceRepositoryMock.getDeviceChats(DEVICE_ID))
                 .thenReturn(List.of(
                         new Chat(CHAT_ID_ADMIN, true),
@@ -2790,8 +2811,8 @@ class EventServiceTest {
 
         ZonedDateTime timeFirstRequestReceiving = INIT_TIME.plusMinutes(1);
 
-        Mockito.when(deviceRepositoryMock.getHasClock(DEVICE_ID))
-                .thenReturn(Optional.of(true));
+        Mockito.when(deviceRepositoryMock.getDeviceInfo(DEVICE_ID))
+                .thenReturn(Optional.of(new DeviceInfo(true, false)));
         Mockito.when(deviceRepositoryMock.getDeviceChats(DEVICE_ID))
                 .thenReturn(List.of(
                         new Chat(CHAT_ID_ADMIN, true),
@@ -2943,7 +2964,7 @@ class EventServiceTest {
                 DEVICE_ID
         );
 
-        Mockito.when(deviceRepositoryMock.getHasClock(DEVICE_ID)).thenReturn(Optional.of(true));
+        Mockito.when(deviceRepositoryMock.getDeviceInfo(DEVICE_ID)).thenReturn(Optional.of(new DeviceInfo(true, false)));
         Mockito.when(deviceRepositoryMock.getDeviceChats(DEVICE_ID))
                 .thenReturn(List.of(
                         new Chat(CHAT_ID_ADMIN, true),
@@ -3019,8 +3040,8 @@ class EventServiceTest {
 
         ZonedDateTime timeFirstRequestReceiving = INIT_TIME.plusMinutes(1);
 
-        Mockito.when(deviceRepositoryMock.getHasClock(DEVICE_ID))
-                .thenReturn(Optional.of(true));
+        Mockito.when(deviceRepositoryMock.getDeviceInfo(DEVICE_ID))
+                .thenReturn(Optional.of(new DeviceInfo(true, false)));
         Mockito.when(deviceRepositoryMock.getDeviceChats(DEVICE_ID))
                 .thenReturn(List.of(
                         new Chat(CHAT_ID_ADMIN, true),
@@ -3150,7 +3171,7 @@ class EventServiceTest {
                 DEVICE_ID
         );
 
-        Mockito.when(deviceRepositoryMock.getHasClock(DEVICE_ID)).thenReturn(Optional.of(true));
+        Mockito.when(deviceRepositoryMock.getDeviceInfo(DEVICE_ID)).thenReturn(Optional.of(new DeviceInfo(true, false)));
         Mockito.when(deviceRepositoryMock.getDeviceChats(DEVICE_ID))
                 .thenReturn(List.of(
                         new Chat(CHAT_ID_ADMIN, true),
@@ -3183,6 +3204,102 @@ class EventServiceTest {
                 );
 
         inOrder.verifyNoMoreInteractions();
+    }
+
+    @Test
+    void retryAfterRemoval() throws Exception {
+        // large period so the countdown timer never fires during this test
+        EventService.setPeriodMilliseconds(60_000L);
+        final EventService eventService = new EventService(telegramNotifierMock, deviceRepositoryMock, clockMock);
+
+        EventRequest eventRequest = new EventRequest(
+                List.of(new Event(
+                        1L,
+                        EventType.PING,
+                        FormattersKt.dateTimeFormatter.format(INIT_TIME),
+                        null
+                )),
+                DEVICE_ID
+        );
+
+        CountDownLatch threadAHoldsLock = new CountDownLatch(1);
+        CountDownLatch releaseThreadA = new CountDownLatch(1);
+        AtomicInteger getDeviceInfoCalls = new AtomicInteger();
+
+        // call 1 (thread A, under the processor's lock): park until released, then "device not found";
+        // call 2 (thread B, after retry on a fresh processor): device exists
+        Mockito.when(deviceRepositoryMock.getDeviceInfo(DEVICE_ID)).thenAnswer(_ -> {
+            if (1 == getDeviceInfoCalls.incrementAndGet()) {
+                threadAHoldsLock.countDown();
+                if (!releaseThreadA.await(5, TimeUnit.SECONDS)) {
+                    throw new IllegalStateException("thread A was never released");
+                }
+                return Optional.empty();
+            }
+            return Optional.of(new DeviceInfo(true, false));
+        });
+        Mockito.when(deviceRepositoryMock.getDeviceChats(DEVICE_ID))
+                .thenReturn(List.of(
+                        new Chat(CHAT_ID_ADMIN, true),
+                        new Chat(CHAT_ID_USER, false)
+                ));
+        Mockito.when(clockMock.instant()).thenReturn(INIT_TIME.toInstant());
+        Mockito.when(clockMock.getZone()).thenReturn(INIT_TIME.getZone());
+
+        AtomicReference<Throwable> threadAException = new AtomicReference<>();
+        Thread threadA = new Thread(() -> {
+            try {
+                eventService.processEvents(eventRequest);
+            } catch (Throwable e) {
+                threadAException.set(e);
+            }
+        }, "test-thread-a");
+
+        AtomicReference<Throwable> threadBException = new AtomicReference<>();
+        Thread threadB = new Thread(() -> {
+            try {
+                eventService.processEvents(eventRequest);
+            } catch (Throwable e) {
+                threadBException.set(e);
+            }
+        }, "test-thread-b");
+
+        threadA.start();
+        Assertions.assertTrue(threadAHoldsLock.await(5, TimeUnit.SECONDS));
+
+        threadB.start();
+        // B has taken the same processor from the map and is now parked on its lock
+        awaitState(threadB, Thread.State.WAITING);
+
+        releaseThreadA.countDown();
+
+        threadA.join(5_000);
+        threadB.join(5_000);
+        Assertions.assertFalse(threadA.isAlive());
+        Assertions.assertFalse(threadB.isAlive());
+
+        Assertions.assertInstanceOf(DeviceNotFoundException.class, threadAException.get());
+        Assertions.assertNull(threadBException.get());
+
+        Mockito.verify(telegramNotifierMock)
+                .send(
+                        DEVICE_ID
+                                + EventService.ADDED,
+                        CHAT_ID_ADMIN,
+                        Optional.empty()
+                );
+        Mockito.verifyNoMoreInteractions(telegramNotifierMock);
+    }
+
+    private void awaitState(Thread thread, Thread.State state) throws InterruptedException {
+        long deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(5);
+        while (thread.getState() != state) {
+            if (System.nanoTime() > deadline) {
+                throw new IllegalStateException(
+                        "thread " + thread.getName() + " did not reach " + state + ", is in " + thread.getState());
+            }
+            Thread.sleep(1);
+        }
     }
 
     private void sleepUntilOffline() throws InterruptedException {

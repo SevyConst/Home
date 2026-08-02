@@ -34,7 +34,22 @@ public class DeviceProcessor {
     private final String deviceId;
     private final TelegramNotifier telegramNotifier;
     private final DeviceRepository deviceRepository;
+
+    // guarded by lock
     private ScheduledFuture<?> currentTask;
+
+    // guarded by lock
+    private long generation = 0;
+
+    // guarded by lock
+    @Getter
+    @Setter
+    private boolean firstRequestProcessed = false;
+
+    // guarded by lock; once true, this processor is no longer in the map and must not be used
+    @Getter
+    @Setter
+    private boolean removed = false;
 
     @Getter
     @Setter
@@ -46,14 +61,6 @@ public class DeviceProcessor {
 
     @Getter
     private final Map<Long, Integer> chatIdToRepliedMessageIdMap = new HashMap<>();
-
-    @Getter
-    @Setter
-    private volatile Long lastEventId;
-
-    @Getter
-    @Setter
-    private boolean hasError = false;
 
     @Getter
     private final Lock lock = new ReentrantLock();
@@ -73,23 +80,26 @@ public class DeviceProcessor {
         });
     }
 
+    // must be called with lock held
     public void startCountdownTimer() {
-        if (currentTask != null && !currentTask.isDone()) {
-            currentTask.cancel(true);
+        if (currentTask != null) {
+            currentTask.cancel(false);
         }
 
-        currentTask = scheduler.scheduleAtFixedRate(
+        long myGeneration = ++generation;
+        currentTask = scheduler.schedule(
                 () -> {
                     lock.lock();
                     try {
+                        if (myGeneration != generation) {
+                            return;
+                        }
                         sendMessagesAboutPause();
                     } finally {
                         lock.unlock();
                     }
-                    currentTask.cancel(true);
                 },
                 (long) (EventService.getPeriodMilliseconds() * COEFFICIENT_WAITING),
-                Long.MAX_VALUE,
                 TimeUnit.MILLISECONDS
         );
     }
