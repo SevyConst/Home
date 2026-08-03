@@ -50,7 +50,6 @@ public class EventService {
     public static final String PAUSED = " приостановлено";
     public static final String COUNT_RESTARTS = " - за это время питание отключалось ";
     public static final String TIMES = " раз";
-    public static final String NO_POWER_LESS_ONE_MINUTE = " - возможно отключение питания было очень кратковременным, но это неточно. При этом точно, что отключение питания было не больше одной минуты";
     public static final String NO_POWER_LESS_TWO_MINUTES = " - возможно отключение питания было очень кратковременным, но это неточно. При этом точно, что отключение питания было не больше двух минут";
 
     private final TelegramNotifier telegramNotifier;
@@ -450,12 +449,10 @@ public class EventService {
         if (isTheOneDay) {
             LocalTime timeBeginning = LocalTime.parse(timeBeginningString, formatterOnlyTimeWithoutSeconds);
             LocalTime timeEnd = LocalTime.parse(timeEndString, formatterOnlyTimeWithoutSeconds);
-            if (timeBeginning.plusMinutes(1).isAfter(timeEnd)
-                    || timeBeginning.plusMinutes(1).equals(timeEnd)) {
-                return NO_POWER_LESS_ONE_MINUTE;
-            }
-            if (timeBeginning.plusMinutes(2).isAfter(timeEnd)
-                    || timeBeginning.plusMinutes(2).equals(timeEnd)) {
+            // Measure the gap instead of shifting the start: LocalTime is cyclic, so 23:59 plus one
+            // minute is 00:00 — smaller than the value it started from — and an outage contained in
+            // the last minute of a day would lose its suffix.
+            if (Duration.between(timeBeginning, timeEnd).toMinutes() <= 1) {
                 return NO_POWER_LESS_TWO_MINUTES;
             }
             return "";
@@ -464,10 +461,6 @@ public class EventService {
             LocalDateTime timeEnd = LocalDateTime.parse(timeEndString, formatterWithoutSeconds);
             if (timeBeginning.plusMinutes(1).isAfter(timeEnd)
                     || timeBeginning.plusMinutes(1).isEqual(timeEnd)) {
-                return NO_POWER_LESS_ONE_MINUTE;
-            }
-            if (timeBeginning.plusMinutes(2).isAfter(timeEnd)
-                    || timeBeginning.plusMinutes(2).isEqual(timeEnd)) {
                 return NO_POWER_LESS_TWO_MINUTES;
             }
             return "";

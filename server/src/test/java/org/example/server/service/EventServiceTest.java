@@ -913,8 +913,7 @@ class EventServiceTest {
                                 + EventService.NO_POWER
                                 + EventService.formatterOnlyTimeWithoutSeconds.format(INIT_TIME)
                                 + EventService.AND
-                                + EventService.formatterOnlyTimeWithoutSeconds.format(timeSecondRequestSending)
-                                + EventService.NO_POWER_LESS_TWO_MINUTES,
+                                + EventService.formatterOnlyTimeWithoutSeconds.format(timeSecondRequestSending),
                         CHAT_ID_ADMIN,
                         Optional.empty()
                 );
@@ -926,8 +925,7 @@ class EventServiceTest {
                                 + EventService.NO_POWER
                                 + EventService.formatterOnlyTimeWithoutSeconds.format(INIT_TIME)
                                 + EventService.AND
-                                + EventService.formatterOnlyTimeWithoutSeconds.format(timeSecondRequestSending)
-                                + EventService.NO_POWER_LESS_TWO_MINUTES,
+                                + EventService.formatterOnlyTimeWithoutSeconds.format(timeSecondRequestSending),
                         CHAT_ID_USER,
                         Optional.empty()
                 );
@@ -998,8 +996,7 @@ class EventServiceTest {
                                 + EventService.NO_POWER
                                 + EventService.formatterOnlyTimeWithoutSeconds.format(timeFirstRequestReceiving)
                                 + EventService.AND
-                                + EventService.formatterOnlyTimeWithoutSeconds.format(timeSecondRequestReceiving)
-                                + EventService.NO_POWER_LESS_TWO_MINUTES,
+                                + EventService.formatterOnlyTimeWithoutSeconds.format(timeSecondRequestReceiving),
                         CHAT_ID_ADMIN,
                         Optional.empty()
                 );
@@ -1011,8 +1008,7 @@ class EventServiceTest {
                                 + EventService.NO_POWER
                                 + EventService.formatterOnlyTimeWithoutSeconds.format(timeFirstRequestReceiving)
                                 + EventService.AND
-                                + EventService.formatterOnlyTimeWithoutSeconds.format(timeSecondRequestReceiving)
-                                + EventService.NO_POWER_LESS_TWO_MINUTES,
+                                + EventService.formatterOnlyTimeWithoutSeconds.format(timeSecondRequestReceiving),
                         CHAT_ID_USER,
                         Optional.empty()
                 );
@@ -1093,6 +1089,176 @@ class EventServiceTest {
                                 + EventService.formatterWithoutSeconds.format(INIT_TIME)
                                 + EventService.AND
                                 + EventService.formatterWithoutSeconds.format(ANOTHER_DAY),
+                        CHAT_ID_USER,
+                        Optional.empty()
+                );
+
+        inOrder.verifyNoMoreInteractions();
+    }
+
+    // The multi-day branch of buildSuffixIfPauseIsShort: the same-day tests never reach it, because
+    // a one-minute gap that crosses a date boundary is the only way to get there. Seconds are dropped
+    // here too, so a 1 min 59 s pause across midnight still renders as a one-minute gap.
+    @Test
+    void pingRequestStartRequestDifferentDaysAlmostTwoMinutesPause() throws Exception {
+        final EventService eventService = new EventService(telegramNotifierMock, deviceRepositoryMock, clockMock);
+
+        ZonedDateTime beforeMidnight = Instant.parse("2026-07-06T20:59:00Z").atZone(DISPLAY_ZONE);
+        ZonedDateTime afterMidnight = beforeMidnight.plusMinutes(1).plusSeconds(59);
+
+        EventRequest eventRequest1 = new EventRequest(
+                List.of(new Event(
+                        1L,
+                        EventType.PING,
+                        FormattersKt.dateTimeFormatter.format(beforeMidnight),
+                        null
+                )),
+                DEVICE_ID
+        );
+
+        Mockito.when(deviceRepositoryMock.getDeviceInfo(DEVICE_ID))
+                .thenReturn(Optional.of(new DeviceInfo(true, false)));
+        Mockito.when(deviceRepositoryMock.getDeviceChats(DEVICE_ID))
+                .thenReturn(List.of(
+                        new Chat(CHAT_ID_ADMIN, true),
+                        new Chat(CHAT_ID_USER, false)
+                ));
+        Mockito.when(clockMock.instant()).thenReturn(beforeMidnight.toInstant());
+        Mockito.when(clockMock.getZone()).thenReturn(beforeMidnight.getZone());
+
+        eventService.processEvents(eventRequest1);
+
+        EventRequest eventRequest2 = new EventRequest(
+                List.of(new Event(
+                        2L,
+                        EventType.START,
+                        FormattersKt.dateTimeFormatter.format(afterMidnight),
+                        null
+                )),
+                DEVICE_ID
+        );
+
+        Mockito.when(clockMock.instant()).thenReturn(afterMidnight.toInstant());
+        Mockito.when(clockMock.getZone()).thenReturn(afterMidnight.getZone());
+
+        eventService.processEvents(eventRequest2);
+
+        InOrder inOrder = Mockito.inOrder(telegramNotifierMock);
+
+        inOrder.verify(telegramNotifierMock)
+                .send(
+                        DEVICE_ID + EventService.ADDED,
+                        CHAT_ID_ADMIN,
+                        Optional.empty()
+                );
+
+        inOrder.verify(telegramNotifierMock)
+                .send(
+                        DEVICE_ID
+                                + EventService.DASH
+                                + EventService.NO_POWER
+                                + EventService.formatterWithoutSeconds.format(beforeMidnight)
+                                + EventService.AND
+                                + EventService.formatterWithoutSeconds.format(afterMidnight)
+                                + EventService.NO_POWER_LESS_TWO_MINUTES,
+                        CHAT_ID_ADMIN,
+                        Optional.empty()
+                );
+
+        inOrder.verify(telegramNotifierMock)
+                .send(
+                        DEVICE_ID
+                                + EventService.DASH
+                                + EventService.NO_POWER
+                                + EventService.formatterWithoutSeconds.format(beforeMidnight)
+                                + EventService.AND
+                                + EventService.formatterWithoutSeconds.format(afterMidnight)
+                                + EventService.NO_POWER_LESS_TWO_MINUTES,
+                        CHAT_ID_USER,
+                        Optional.empty()
+                );
+
+        inOrder.verifyNoMoreInteractions();
+    }
+
+    // LocalTime is cyclic, so 23:59 + 1 minute is 00:00 — the smallest LocalTime, not the largest.
+    // An outage that starts and ends inside the last minute of a day is the shortest one possible,
+    // and it must still get the suffix.
+    @Test
+    void pingRequestStartRequestInsideLastMinuteOfDay() throws Exception {
+        final EventService eventService = new EventService(telegramNotifierMock, deviceRepositoryMock, clockMock);
+
+        ZonedDateTime lastMinute = Instant.parse("2026-07-06T20:59:00Z").atZone(DISPLAY_ZONE);
+        ZonedDateTime insideLastMinute = lastMinute.plusSeconds(30);
+
+        EventRequest eventRequest1 = new EventRequest(
+                List.of(new Event(
+                        1L,
+                        EventType.PING,
+                        FormattersKt.dateTimeFormatter.format(lastMinute),
+                        null
+                )),
+                DEVICE_ID
+        );
+
+        Mockito.when(deviceRepositoryMock.getDeviceInfo(DEVICE_ID))
+                .thenReturn(Optional.of(new DeviceInfo(true, false)));
+        Mockito.when(deviceRepositoryMock.getDeviceChats(DEVICE_ID))
+                .thenReturn(List.of(
+                        new Chat(CHAT_ID_ADMIN, true),
+                        new Chat(CHAT_ID_USER, false)
+                ));
+        Mockito.when(clockMock.instant()).thenReturn(lastMinute.toInstant());
+        Mockito.when(clockMock.getZone()).thenReturn(lastMinute.getZone());
+
+        eventService.processEvents(eventRequest1);
+
+        EventRequest eventRequest2 = new EventRequest(
+                List.of(new Event(
+                        2L,
+                        EventType.START,
+                        FormattersKt.dateTimeFormatter.format(insideLastMinute),
+                        null
+                )),
+                DEVICE_ID
+        );
+
+        Mockito.when(clockMock.instant()).thenReturn(insideLastMinute.toInstant());
+        Mockito.when(clockMock.getZone()).thenReturn(insideLastMinute.getZone());
+
+        eventService.processEvents(eventRequest2);
+
+        InOrder inOrder = Mockito.inOrder(telegramNotifierMock);
+
+        inOrder.verify(telegramNotifierMock)
+                .send(
+                        DEVICE_ID + EventService.ADDED,
+                        CHAT_ID_ADMIN,
+                        Optional.empty()
+                );
+
+        inOrder.verify(telegramNotifierMock)
+                .send(
+                        DEVICE_ID
+                                + EventService.DASH
+                                + EventService.NO_POWER
+                                + EventService.formatterOnlyTimeWithoutSeconds.format(lastMinute)
+                                + EventService.AND
+                                + EventService.formatterOnlyTimeWithoutSeconds.format(insideLastMinute)
+                                + EventService.NO_POWER_LESS_TWO_MINUTES,
+                        CHAT_ID_ADMIN,
+                        Optional.empty()
+                );
+
+        inOrder.verify(telegramNotifierMock)
+                .send(
+                        DEVICE_ID
+                                + EventService.DASH
+                                + EventService.NO_POWER
+                                + EventService.formatterOnlyTimeWithoutSeconds.format(lastMinute)
+                                + EventService.AND
+                                + EventService.formatterOnlyTimeWithoutSeconds.format(insideLastMinute)
+                                + EventService.NO_POWER_LESS_TWO_MINUTES,
                         CHAT_ID_USER,
                         Optional.empty()
                 );
@@ -1478,8 +1644,7 @@ class EventServiceTest {
                                 + EventService.NO_POWER
                                 + EventService.formatterOnlyTimeWithoutSeconds.format(INIT_TIME)
                                 + EventService.AND
-                                + EventService.formatterOnlyTimeWithoutSeconds.format(timeSecondRequestSending)
-                                + EventService.NO_POWER_LESS_TWO_MINUTES,
+                                + EventService.formatterOnlyTimeWithoutSeconds.format(timeSecondRequestSending),
                         CHAT_ID_ADMIN,
                         Optional.empty()
                 );
@@ -1491,8 +1656,7 @@ class EventServiceTest {
                                 + EventService.NO_POWER
                                 + EventService.formatterOnlyTimeWithoutSeconds.format(INIT_TIME)
                                 + EventService.AND
-                                + EventService.formatterOnlyTimeWithoutSeconds.format(timeSecondRequestSending)
-                                + EventService.NO_POWER_LESS_TWO_MINUTES,
+                                + EventService.formatterOnlyTimeWithoutSeconds.format(timeSecondRequestSending),
                         CHAT_ID_USER,
                         Optional.empty()
                 );
@@ -1575,8 +1739,7 @@ class EventServiceTest {
                                 + EventService.NO_POWER
                                 + EventService.formatterOnlyTimeWithoutSeconds.format(timeFirstRequestReceiving)
                                 + EventService.AND
-                                + EventService.formatterOnlyTimeWithoutSeconds.format(timeSecondRequestReceiving)
-                                + EventService.NO_POWER_LESS_TWO_MINUTES,
+                                + EventService.formatterOnlyTimeWithoutSeconds.format(timeSecondRequestReceiving),
                         CHAT_ID_ADMIN,
                         Optional.empty()
                 );
@@ -1588,8 +1751,7 @@ class EventServiceTest {
                                 + EventService.NO_POWER
                                 + EventService.formatterOnlyTimeWithoutSeconds.format(timeFirstRequestReceiving)
                                 + EventService.AND
-                                + EventService.formatterOnlyTimeWithoutSeconds.format(timeSecondRequestReceiving)
-                                + EventService.NO_POWER_LESS_TWO_MINUTES,
+                                + EventService.formatterOnlyTimeWithoutSeconds.format(timeSecondRequestReceiving),
                         CHAT_ID_USER,
                         Optional.empty()
                 );
@@ -1651,7 +1813,7 @@ class EventServiceTest {
                                 + EventService.formatterOnlyTimeWithoutSeconds.format(INIT_TIME)
                                 + EventService.AND
                                 + EventService.formatterOnlyTimeWithoutSeconds.format(timeRequestSending)
-                                + EventService.NO_POWER_LESS_ONE_MINUTE
+                                + EventService.NO_POWER_LESS_TWO_MINUTES
                                 + EventService.NEW_PARAGRAPH
                                 + DEVICE_ID
                                 + EventService.ADDED,
@@ -1673,7 +1835,174 @@ class EventServiceTest {
                                 + EventService.formatterOnlyTimeWithoutSeconds.format(INIT_TIME)
                                 + EventService.AND
                                 + EventService.formatterOnlyTimeWithoutSeconds.format(timeRequestSending)
-                                + EventService.NO_POWER_LESS_ONE_MINUTE,
+                                + EventService.NO_POWER_LESS_TWO_MINUTES,
+                        CHAT_ID_USER,
+                        Optional.empty()
+                );
+
+        Mockito.verifyNoMoreInteractions(telegramNotifierMock);
+    }
+
+    // Times are compared after being formatted to HH:mm, so the seconds are dropped: a pause of
+    // 1 min 59 s still renders as a one-minute gap. This is the worst case the suffix has to cover,
+    // and it is why the suffix promises two minutes rather than one.
+    @Test
+    void doubleStartOneRequestAlmostTwoMinutesPause() throws Exception {
+        final EventService eventService = new EventService(telegramNotifierMock, deviceRepositoryMock, clockMock);
+
+        ZonedDateTime timeRequestSending = INIT_TIME.plusMinutes(1).plusSeconds(59);
+
+        EventRequest eventRequest = new EventRequest(
+                List.of(
+                        new Event(
+                                1L,
+                                EventType.START,
+                                FormattersKt.dateTimeFormatter.format(INIT_TIME),
+                                null
+                        ),
+                        new Event(
+                                2L,
+                                EventType.START,
+                                FormattersKt.dateTimeFormatter.format(timeRequestSending),
+                                null
+                        )
+                ),
+                DEVICE_ID
+        );
+
+        Mockito.when(deviceRepositoryMock.getDeviceInfo(DEVICE_ID))
+                .thenReturn(Optional.of(new DeviceInfo(true, false)));
+        Mockito.when(deviceRepositoryMock.getDeviceChats(DEVICE_ID))
+                .thenReturn(List.of(
+                        new Chat(CHAT_ID_ADMIN, true),
+                        new Chat(CHAT_ID_USER, false)
+                ));
+        Mockito.when(clockMock.instant()).thenReturn(timeRequestSending.toInstant());
+        Mockito.when(clockMock.getZone()).thenReturn(timeRequestSending.getZone());
+
+        eventService.processEvents(eventRequest);
+
+        InOrder inOrder = Mockito.inOrder(telegramNotifierMock);
+
+        inOrder.verify(telegramNotifierMock)
+                .send(
+                        DEVICE_ID
+                                + ":\n"
+                                + EventService.NO_INTERNET_SINCE_FIRST_START
+                                + EventService.AT
+                                + EventService.formatterOnlyTimeWithoutSeconds.format(INIT_TIME)
+                                + EventService.UNTIL
+                                + EventService.formatterOnlyTimeWithoutSeconds.format(timeRequestSending)
+                                + EventService.NEW_PARAGRAPH
+                                + EventService.NO_POWER
+                                + EventService.formatterOnlyTimeWithoutSeconds.format(INIT_TIME)
+                                + EventService.AND
+                                + EventService.formatterOnlyTimeWithoutSeconds.format(timeRequestSending)
+                                + EventService.NO_POWER_LESS_TWO_MINUTES
+                                + EventService.NEW_PARAGRAPH
+                                + DEVICE_ID
+                                + EventService.ADDED,
+                        CHAT_ID_ADMIN,
+                        Optional.empty()
+                );
+
+        inOrder.verify(telegramNotifierMock)
+                .send(
+                        DEVICE_ID
+                                + ":\n"
+                                + EventService.NO_INTERNET_SINCE_FIRST_START
+                                + EventService.AT
+                                + EventService.formatterOnlyTimeWithoutSeconds.format(INIT_TIME)
+                                + EventService.UNTIL
+                                + EventService.formatterOnlyTimeWithoutSeconds.format(timeRequestSending)
+                                + EventService.NEW_PARAGRAPH
+                                + EventService.NO_POWER
+                                + EventService.formatterOnlyTimeWithoutSeconds.format(INIT_TIME)
+                                + EventService.AND
+                                + EventService.formatterOnlyTimeWithoutSeconds.format(timeRequestSending)
+                                + EventService.NO_POWER_LESS_TWO_MINUTES,
+                        CHAT_ID_USER,
+                        Optional.empty()
+                );
+
+        Mockito.verifyNoMoreInteractions(telegramNotifierMock);
+    }
+
+    // A pause of 2 min 59 s renders as a two-minute gap, which is past the only remaining suffix:
+    // the message must end with the time and say nothing about how short the outage was.
+    @Test
+    void doubleStartOneRequestAlmostThreeMinutesPause() throws Exception {
+        final EventService eventService = new EventService(telegramNotifierMock, deviceRepositoryMock, clockMock);
+
+        ZonedDateTime timeRequestSending = INIT_TIME.plusMinutes(2).plusSeconds(59);
+
+        EventRequest eventRequest = new EventRequest(
+                List.of(
+                        new Event(
+                                1L,
+                                EventType.START,
+                                FormattersKt.dateTimeFormatter.format(INIT_TIME),
+                                null
+                        ),
+                        new Event(
+                                2L,
+                                EventType.START,
+                                FormattersKt.dateTimeFormatter.format(timeRequestSending),
+                                null
+                        )
+                ),
+                DEVICE_ID
+        );
+
+        Mockito.when(deviceRepositoryMock.getDeviceInfo(DEVICE_ID))
+                .thenReturn(Optional.of(new DeviceInfo(true, false)));
+        Mockito.when(deviceRepositoryMock.getDeviceChats(DEVICE_ID))
+                .thenReturn(List.of(
+                        new Chat(CHAT_ID_ADMIN, true),
+                        new Chat(CHAT_ID_USER, false)
+                ));
+        Mockito.when(clockMock.instant()).thenReturn(timeRequestSending.toInstant());
+        Mockito.when(clockMock.getZone()).thenReturn(timeRequestSending.getZone());
+
+        eventService.processEvents(eventRequest);
+
+        InOrder inOrder = Mockito.inOrder(telegramNotifierMock);
+
+        inOrder.verify(telegramNotifierMock)
+                .send(
+                        DEVICE_ID
+                                + ":\n"
+                                + EventService.NO_INTERNET_SINCE_FIRST_START
+                                + EventService.AT
+                                + EventService.formatterOnlyTimeWithoutSeconds.format(INIT_TIME)
+                                + EventService.UNTIL
+                                + EventService.formatterOnlyTimeWithoutSeconds.format(timeRequestSending)
+                                + EventService.NEW_PARAGRAPH
+                                + EventService.NO_POWER
+                                + EventService.formatterOnlyTimeWithoutSeconds.format(INIT_TIME)
+                                + EventService.AND
+                                + EventService.formatterOnlyTimeWithoutSeconds.format(timeRequestSending)
+                                + EventService.NEW_PARAGRAPH
+                                + DEVICE_ID
+                                + EventService.ADDED,
+                        CHAT_ID_ADMIN,
+                        Optional.empty()
+                );
+
+        inOrder.verify(telegramNotifierMock)
+                .send(
+                        DEVICE_ID
+                                + ":\n"
+                                + EventService.NO_INTERNET_SINCE_FIRST_START
+                                + EventService.AT
+                                + EventService.formatterOnlyTimeWithoutSeconds.format(INIT_TIME)
+                                + EventService.UNTIL
+                                + EventService.formatterOnlyTimeWithoutSeconds.format(timeRequestSending)
+                                + EventService.NEW_PARAGRAPH
+                                + EventService.NO_POWER
+                                + EventService.formatterOnlyTimeWithoutSeconds.format(INIT_TIME)
+                                + EventService.AND
+                                + EventService.formatterOnlyTimeWithoutSeconds.format(timeRequestSending),
                         CHAT_ID_USER,
                         Optional.empty()
                 );
@@ -1880,7 +2209,7 @@ class EventServiceTest {
                                 + EventService.formatterOnlyTimeWithoutSeconds.format(timeSecondRequestFirstEvent)
                                 + EventService.AND
                                 + EventService.formatterOnlyTimeWithoutSeconds.format(timeSecondRequestSending)
-                                + EventService.NO_POWER_LESS_ONE_MINUTE,
+                                + EventService.NO_POWER_LESS_TWO_MINUTES,
                         CHAT_ID_ADMIN,
                         Optional.of(MESSAGE_ID_ADMIN)
                 );
@@ -1902,7 +2231,7 @@ class EventServiceTest {
                                 + EventService.formatterOnlyTimeWithoutSeconds.format(timeSecondRequestFirstEvent)
                                 + EventService.AND
                                 + EventService.formatterOnlyTimeWithoutSeconds.format(timeSecondRequestSending)
-                                + EventService.NO_POWER_LESS_ONE_MINUTE,
+                                + EventService.NO_POWER_LESS_TWO_MINUTES,
                         CHAT_ID_USER,
                         Optional.of(MESSAGE_ID_USER)
                 );
@@ -2137,13 +2466,12 @@ class EventServiceTest {
                                 + EventService.formatterOnlyTimeWithoutSeconds.format(INIT_TIME)
                                 + EventService.AND
                                 + EventService.formatterOnlyTimeWithoutSeconds.format(timeSecondRequestFirstEvent)
-                                + EventService.NO_POWER_LESS_TWO_MINUTES
                                 + "\n"
                                 + EventService.NO_POWER
                                 + EventService.formatterOnlyTimeWithoutSeconds.format(timeSecondRequestFirstEvent)
                                 + EventService.AND
                                 + EventService.formatterOnlyTimeWithoutSeconds.format(timeSecondRequestSending)
-                                + EventService.NO_POWER_LESS_ONE_MINUTE,
+                                + EventService.NO_POWER_LESS_TWO_MINUTES,
                         CHAT_ID_ADMIN,
                         Optional.empty()
                 );
@@ -2161,13 +2489,12 @@ class EventServiceTest {
                                 + EventService.formatterOnlyTimeWithoutSeconds.format(INIT_TIME)
                                 + EventService.AND
                                 + EventService.formatterOnlyTimeWithoutSeconds.format(timeSecondRequestFirstEvent)
-                                + EventService.NO_POWER_LESS_TWO_MINUTES
                                 + "\n"
                                 + EventService.NO_POWER
                                 + EventService.formatterOnlyTimeWithoutSeconds.format(timeSecondRequestFirstEvent)
                                 + EventService.AND
                                 + EventService.formatterOnlyTimeWithoutSeconds.format(timeSecondRequestSending)
-                                + EventService.NO_POWER_LESS_ONE_MINUTE,
+                                + EventService.NO_POWER_LESS_TWO_MINUTES,
                         CHAT_ID_USER,
                         Optional.empty()
                 );
@@ -2502,7 +2829,7 @@ class EventServiceTest {
                                 + EventService.formatterOnlyTimeWithoutSeconds.format(timeSecondRequestSending)
                                 + EventService.AND
                                 + EventService.formatterOnlyTimeWithoutSeconds.format(timeThirdRequestSending)
-                                + EventService.NO_POWER_LESS_ONE_MINUTE,
+                                + EventService.NO_POWER_LESS_TWO_MINUTES,
                         CHAT_ID_ADMIN,
                         Optional.empty()
                 );
@@ -2515,7 +2842,7 @@ class EventServiceTest {
                                 + EventService.formatterOnlyTimeWithoutSeconds.format(timeSecondRequestSending)
                                 + EventService.AND
                                 + EventService.formatterOnlyTimeWithoutSeconds.format(timeThirdRequestSending)
-                                + EventService.NO_POWER_LESS_ONE_MINUTE,
+                                + EventService.NO_POWER_LESS_TWO_MINUTES,
                         CHAT_ID_USER,
                         Optional.empty()
                 );
@@ -2584,7 +2911,7 @@ class EventServiceTest {
                                 + EventService.formatterOnlyTimeWithoutSeconds.format(timeSecondEvent)
                                 + EventService.AND
                                 + EventService.formatterOnlyTimeWithoutSeconds.format(timeSending)
-                                + EventService.NO_POWER_LESS_ONE_MINUTE
+                                + EventService.NO_POWER_LESS_TWO_MINUTES
                                 + EventService.NEW_PARAGRAPH
                                 + DEVICE_ID
                                 + EventService.ADDED,
@@ -2606,7 +2933,7 @@ class EventServiceTest {
                                 + EventService.formatterOnlyTimeWithoutSeconds.format(timeSecondEvent)
                                 + EventService.AND
                                 + EventService.formatterOnlyTimeWithoutSeconds.format(timeSending)
-                                + EventService.NO_POWER_LESS_ONE_MINUTE,
+                                + EventService.NO_POWER_LESS_TWO_MINUTES,
                         CHAT_ID_USER,
                         Optional.empty()
                 );
@@ -2703,7 +3030,7 @@ class EventServiceTest {
                                 + EventService.formatterOnlyTimeWithoutSeconds.format(timeSecondRequestFirstEvent)
                                 + EventService.AND
                                 + EventService.formatterOnlyTimeWithoutSeconds.format(timeSecondRequestSending)
-                                + EventService.NO_POWER_LESS_ONE_MINUTE,
+                                + EventService.NO_POWER_LESS_TWO_MINUTES,
                         CHAT_ID_ADMIN,
                         Optional.empty()
                 );
@@ -2721,7 +3048,7 @@ class EventServiceTest {
                                 + EventService.formatterOnlyTimeWithoutSeconds.format(timeSecondRequestFirstEvent)
                                 + EventService.AND
                                 + EventService.formatterOnlyTimeWithoutSeconds.format(timeSecondRequestSending)
-                                + EventService.NO_POWER_LESS_ONE_MINUTE,
+                                + EventService.NO_POWER_LESS_TWO_MINUTES,
                         CHAT_ID_USER,
                         Optional.empty()
                 );
@@ -2824,8 +3151,7 @@ class EventServiceTest {
                                 + EventService.NO_POWER
                                 + EventService.formatterOnlyTimeWithoutSeconds.format(timeFirstRequestSending)
                                 + EventService.AND
-                                + EventService.formatterOnlyTimeWithoutSeconds.format(timeSecondRequestSending)
-                                + EventService.NO_POWER_LESS_TWO_MINUTES,
+                                + EventService.formatterOnlyTimeWithoutSeconds.format(timeSecondRequestSending),
                         CHAT_ID_ADMIN,
                         Optional.empty()
                 );
@@ -2836,8 +3162,7 @@ class EventServiceTest {
                                 + EventService.NO_POWER
                                 + EventService.formatterOnlyTimeWithoutSeconds.format(timeFirstRequestSending)
                                 + EventService.AND
-                                + EventService.formatterOnlyTimeWithoutSeconds.format(timeSecondRequestSending)
-                                + EventService.NO_POWER_LESS_TWO_MINUTES,
+                                + EventService.formatterOnlyTimeWithoutSeconds.format(timeSecondRequestSending),
                         CHAT_ID_USER,
                         Optional.empty()
                 );
@@ -2978,7 +3303,7 @@ class EventServiceTest {
                                 + EventService.formatterOnlyTimeWithoutSeconds.format(timeSecondRequestSecondEvent)
                                 + EventService.AND
                                 + EventService.formatterOnlyTimeWithoutSeconds.format(timeSecondRequestThirdEvent)
-                                + EventService.NO_POWER_LESS_ONE_MINUTE,
+                                + EventService.NO_POWER_LESS_TWO_MINUTES,
                         CHAT_ID_ADMIN,
                         Optional.of(MESSAGE_ID_ADMIN)
                 );
@@ -2996,7 +3321,7 @@ class EventServiceTest {
                                 + EventService.formatterOnlyTimeWithoutSeconds.format(timeSecondRequestSecondEvent)
                                 + EventService.AND
                                 + EventService.formatterOnlyTimeWithoutSeconds.format(timeSecondRequestThirdEvent)
-                                + EventService.NO_POWER_LESS_ONE_MINUTE,
+                                + EventService.NO_POWER_LESS_TWO_MINUTES,
                         CHAT_ID_USER,
                         Optional.of(MESSAGE_ID_USER)
                 );
