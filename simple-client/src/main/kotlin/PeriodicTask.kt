@@ -3,7 +3,7 @@ package org.example
 import model.Event
 import model.EventRequest
 import model.EventType
-import java.time.LocalDateTime
+import java.time.OffsetDateTime
 
 class PeriodicTask(
     private var messageId: Long,
@@ -14,7 +14,7 @@ class PeriodicTask(
         val event = Event(
             id = messageId++,
             eventType = EventType.PING,
-            time = LocalDateTime.now().format(dateTimeFormatter),
+            time = OffsetDateTime.now().format(dateTimeFormatter),
             additionalInfo = null)
 
         httpSender.send(EventRequest(listOf(event), deviceId))

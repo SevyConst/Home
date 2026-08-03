@@ -5,7 +5,7 @@ import model.Event
 import model.EventRequest
 import model.EventType
 import org.example.db.EventDb
-import java.time.LocalDateTime
+import java.time.OffsetDateTime
 import java.time.YearMonth
 import kotlin.system.exitProcess
 
@@ -19,7 +19,7 @@ class PeriodicTask(
 ): Runnable {
 
     override fun run() {
-        val now = LocalDateTime.now()
+        val now = OffsetDateTime.now()
         val event = Event(messageId++, EventType.PING, now.format(dateTimeFormatter), null)
         processEvent(event, YearMonth.of(now.year, now.monthValue), eventDb, deviceId, httpSender)
     }

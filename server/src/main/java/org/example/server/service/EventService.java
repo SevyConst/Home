@@ -138,12 +138,19 @@ public class EventService {
         sendMessages(textPair, chatsList, deviceProcessor.getChatIdToRepliedMessageIdMap());
 
         ZonedDateTime lastOnlineTime = deviceHasClock
-                ? LocalDateTime.parse(events.getLast().getTime(), FormattersKt.dateTimeFormatter)
-                .atZone(ZonedDateTime.now(clock).getZone())
+                ? eventTime(events.getLast())
                 : ZonedDateTime.now(clock);
         deviceProcessor.setLastOnlineTime(lastOnlineTime);
         deviceProcessor.setOffline(false);
         deviceProcessor.startCountdownTimer();
+    }
+
+    // The device sends an instant with its own offset; messages must show it in the display zone.
+    // Converting the instant, rather than relabelling the local fields, is what keeps this time
+    // comparable with ZonedDateTime.now(clock) elsewhere in this class.
+    private ZonedDateTime eventTime(Event event) {
+        return OffsetDateTime.parse(event.getTime(), FormattersKt.dateTimeFormatter)
+                .atZoneSameInstant(clock.getZone());
     }
 
     @Data
@@ -206,10 +213,7 @@ public class EventService {
             boolean deviceHasClock
     ) {
         Event event = request.getEvents().getFirst();
-        ZonedDateTime eventSendingTime = LocalDateTime.parse(
-                event.getTime(),
-                FormattersKt.dateTimeFormatter
-        ).atZone(clock.getZone());
+        ZonedDateTime eventSendingTime = eventTime(event);
 
         ZonedDateTime eventReceivingTime = ZonedDateTime.now(clock);
         String deviceId = request.getDeviceId();
@@ -247,10 +251,7 @@ public class EventService {
             return textPair;
         }
 
-        ZonedDateTime eventSendingTime = LocalDateTime.parse(
-                event.getTime(),
-                FormattersKt.dateTimeFormatter
-        ).atZone(clock.getZone());
+        ZonedDateTime eventSendingTime = eventTime(event);
 
         ZonedDateTime eventReceivingTime = ZonedDateTime.now(clock);
         return buildTextPairForTheOneStartEvent(
@@ -273,19 +274,13 @@ public class EventService {
             );
         }
 
-        ZonedDateTime timeFirstEvent = LocalDateTime.parse(
-                request.getEvents().getFirst().getTime(),
-                FormattersKt.dateTimeFormatter
-        ).atZone(clock.getZone());
+        ZonedDateTime timeFirstEvent = eventTime(request.getEvents().getFirst());
 
         ZonedDateTime beginning = isFirstRequest
                 ? timeFirstEvent
                 : deviceProcessor.getLastOnlineTime();
 
-        ZonedDateTime end = LocalDateTime.parse(
-                request.getEvents().getLast().getTime(),
-                FormattersKt.dateTimeFormatter
-        ).atZone(clock.getZone());
+        ZonedDateTime end = eventTime(request.getEvents().getLast());
 
         boolean isTheOneDay = beginning.toLocalDate().isEqual(end.toLocalDate());
 
@@ -415,16 +410,10 @@ public class EventService {
                 return Optional.empty();
             }
         } else {
-            beginning = LocalDateTime.parse(
-                    events.get(i-1).getTime(),
-                    FormattersKt.dateTimeFormatter
-            ).atZone(clock.getZone());
+            beginning = eventTime(events.get(i - 1));
         }
 
-        ZonedDateTime end = LocalDateTime.parse(
-                events.get(i).getTime(),
-                FormattersKt.dateTimeFormatter
-        ).atZone(clock.getZone());
+        ZonedDateTime end = eventTime(events.get(i));
 
         DateTimeFormatter formatter = isTheOneDay
                 ? formatterOnlyTimeWithoutSeconds

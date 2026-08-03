@@ -5,7 +5,7 @@ import model.Event
 import model.EventRequest
 import model.EventType
 import org.example.config.Config
-import java.time.LocalDateTime
+import java.time.OffsetDateTime
 import java.util.concurrent.Executors
 import java.util.concurrent.TimeUnit
 
@@ -33,7 +33,7 @@ fun processStartMessage(deviceId: String, httpSender: HttpSender) {
     val event = Event(
         id = 0,
         eventType = EventType.START,
-        time = LocalDateTime.now().format(dateTimeFormatter),
+        time = OffsetDateTime.now().format(dateTimeFormatter),
         additionalInfo = null)
     httpSender.send(EventRequest(listOf(event), deviceId))
 }

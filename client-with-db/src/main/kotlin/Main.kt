@@ -8,7 +8,7 @@ import model.EventType
 import org.example.config.Config
 import org.example.config.ConfigDb
 import org.example.db.EventDb
-import java.time.LocalDateTime
+import java.time.OffsetDateTime
 import java.time.YearMonth
 import java.util.concurrent.Executors
 import java.util.concurrent.TimeUnit
@@ -66,7 +66,7 @@ fun processStartMessage(
     deviceId: String,
     httpSender: HttpSender
 ) {
-    val now = LocalDateTime.now()
+    val now = OffsetDateTime.now()
     val event = Event(
         id = messageId,
         eventType = EventType.START,
@@ -83,7 +83,7 @@ fun processStartMessage(
 }
 
 fun sendError(exception: Exception, httpSender: HttpSender, deviceId: String, message: String) {
-    val now = LocalDateTime.now()
+    val now = OffsetDateTime.now()
     val event = Event(
         id = -1,
         eventType = EventType.ERROR,

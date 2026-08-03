@@ -32,10 +32,12 @@ class EventServiceTest {
     private static final int MESSAGE_ID_USER = 100600;
     private static final long PERIOD_MILLISECONDS = 100L;
     private static final double COEFFICIENT_SLEEP = 1.1;
+    // The zone messages are rendered in. Pinned, so the suite does not depend on the host timezone.
+    private static final ZoneId DISPLAY_ZONE = ZoneId.of("Europe/Moscow");
     private static final ZonedDateTime INIT_TIME =
-            Instant.parse("2026-07-06T13:56:00Z").atZone(ZoneId.systemDefault());
+            Instant.parse("2026-07-06T13:56:00Z").atZone(DISPLAY_ZONE);
     private static final ZonedDateTime ANOTHER_DAY =
-            Instant.parse("2026-07-08T13:56:00Z").atZone(ZoneId.systemDefault());
+            Instant.parse("2026-07-08T13:56:00Z").atZone(DISPLAY_ZONE);
 
     private final TelegramNotifier telegramNotifierMock = Mockito.mock(TelegramNotifier.class);
     private final DeviceRepository deviceRepositoryMock = Mockito.mock(DeviceRepository.class);
@@ -215,6 +217,58 @@ class EventServiceTest {
                                 + EventService.formatterOnlyTimeWithoutSeconds.format(INIT_TIME)
                                 + EventService.UNTIL
                                 + EventService.formatterOnlyTimeWithoutSeconds.format(timeSending),
+                        CHAT_ID_USER,
+                        Optional.empty()
+                );
+
+        Mockito.verifyNoMoreInteractions(telegramNotifierMock);
+    }
+
+    // The devices sit in Moscow, the server abroad, and the client OS may be left on UTC.
+    // Whatever offset arrives, the message must carry Moscow wall clock and no zone marker.
+    // Expected times are literals on purpose: deriving them from a formatter would assert nothing.
+    @Test
+    void messageShowsDisplayZoneTimeWhenDeviceSendsUtcOffset() throws Exception {
+        final EventService eventService = new EventService(telegramNotifierMock, deviceRepositoryMock, clockMock);
+
+        Instant firstPing = Instant.parse("2026-07-06T13:56:00Z");
+        Instant secondPing = Instant.parse("2026-07-06T14:56:00Z");
+
+        EventRequest eventRequest = new EventRequest(
+                List.of(
+                        new Event(
+                                1L,
+                                EventType.PING,
+                                FormattersKt.dateTimeFormatter.format(firstPing.atOffset(ZoneOffset.UTC)),
+                                null
+                        ),
+                        new Event(
+                                2L,
+                                EventType.PING,
+                                FormattersKt.dateTimeFormatter.format(secondPing.atOffset(ZoneOffset.UTC)),
+                                null
+                        )
+                ),
+                DEVICE_ID
+        );
+
+        Mockito.when(deviceRepositoryMock.getDeviceInfo(DEVICE_ID)).thenReturn(Optional.of(new DeviceInfo(true, false)));
+        Mockito.when(deviceRepositoryMock.getDeviceChats(DEVICE_ID))
+                .thenReturn(List.of(new Chat(CHAT_ID_USER, false)));
+        Mockito.when(clockMock.instant()).thenReturn(secondPing);
+        Mockito.when(clockMock.getZone()).thenReturn(DISPLAY_ZONE);
+
+        eventService.processEvents(eventRequest);
+
+        Mockito.verify(telegramNotifierMock)
+                .send(
+                        DEVICE_ID
+                                + ":\n"
+                                + EventService.NO_INTERNET_SINCE_FIRST_START
+                                + EventService.AT
+                                + "16:56"
+                                + EventService.UNTIL
+                                + "17:56",
                         CHAT_ID_USER,
                         Optional.empty()
                 );
