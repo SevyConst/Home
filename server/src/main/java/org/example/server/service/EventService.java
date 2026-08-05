@@ -8,6 +8,7 @@ import lombok.extern.slf4j.Slf4j;
 import model.Event;
 import model.EventRequest;
 import model.EventType;
+import org.example.ConstantsKt;
 import org.example.FormattersKt;
 import org.example.server.exception.DeviceChatsNotFoundException;
 import org.example.server.exception.DeviceNotFoundException;
@@ -31,7 +32,7 @@ public class EventService {
 
     @Getter
     @Setter
-    private static volatile Long periodMilliseconds = 60L * 1000;
+    private static volatile Long periodMilliseconds = ConstantsKt.PING_PERIOD_MILLISECONDS;
 
     public static final DateTimeFormatter formatterWithoutSeconds = DateTimeFormatter.ofPattern("HH:mm yyyy-MM-dd");
     public static final DateTimeFormatter formatterOnlyTimeWithoutSeconds = DateTimeFormatter.ofPattern("HH:mm");

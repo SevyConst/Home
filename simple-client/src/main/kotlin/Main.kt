@@ -22,9 +22,9 @@ fun main() {
     processStartMessage(config.deviceId, httpSender)
     scheduler.scheduleWithFixedDelay(
         PeriodicTask(1, config.deviceId, httpSender),
-        config.interval.inWholeSeconds,
-        config.interval.inWholeSeconds,
-        TimeUnit.SECONDS
+        PING_PERIOD_MILLISECONDS,
+        PING_PERIOD_MILLISECONDS,
+        TimeUnit.MILLISECONDS
     )
 
 }
