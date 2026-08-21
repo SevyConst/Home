@@ -6,6 +6,29 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 NEVER commit, NEVER push, even if a skill instructs you to.
 
+## Code style
+
+A ternary is always written on three lines — the condition, then `?` and `:` each starting its own line, indented under it. No exceptions for short ones, and no exceptions when the ternary is an argument: it keeps its three lines inside the argument list.
+
+```java
+private static JsonElement number(OptionalDouble value) {
+    return value.isPresent()
+            ? JsonElementKt.JsonPrimitive(value.getAsDouble())
+            : JsonNull.INSTANCE;
+}
+```
+
+In an argument list the shape is the same, indented one step further in:
+
+```java
+fields.put(
+        "status",
+        snapshot.getStatus() == UpsStatus.UNREACHABLE
+                ? JsonNull.INSTANCE
+                : text(snapshot.getStatus().name())
+);
+```
+
 ## Build & test
 
 Gradle 9.4 wrapper, JVM toolchain 25 for every module.
@@ -17,9 +40,6 @@ Gradle 9.4 wrapper, JVM toolchain 25 for every module.
 ```
 
 Runtime configuration is entirely environment variables; there are no committed `.env` files (`*.env` and `*.db` are gitignored).
-
-- Server: `DATABASE_URL`, `DATABASE_USERNAME`, `DATABASE_PASSWORD`, `TELEGRAM_BOT_TOKEN`, `DISPLAY_ZONE`.
-- Clients: `SERVER_URL`, `CONNECT_TIMEOUT`, `REQUEST_TIMEOUT`, `DEVICE_ID`; `client-with-db` additionally needs `URL_DB` (path prefix, not a file), `MAX_UNRECEIVED_EVENTS`, `NUMBER_OF_FILES`.
 
 ## The protocol
 

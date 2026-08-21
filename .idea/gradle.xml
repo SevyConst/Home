@@ -22,6 +22,7 @@
             <option value="$PROJECT_DIR$/app" />
             <option value="$PROJECT_DIR$/buildSrc" />
             <option value="$PROJECT_DIR$/client-with-db" />
+            <option value="$PROJECT_DIR$/client-with-ups" />
             <option value="$PROJECT_DIR$/core" />
             <option value="$PROJECT_DIR$/server" />
             <option value="$PROJECT_DIR$/simple-client" />
