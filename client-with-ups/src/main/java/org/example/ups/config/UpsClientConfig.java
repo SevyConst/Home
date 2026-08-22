@@ -5,8 +5,15 @@ import lombok.Builder;
 import java.net.URI;
 import java.time.Duration;
 
+/**
+ * When {@code serverEnabled} is false, the four settings that only the project's own server needs
+ * — {@code serverUri}, the two server timeouts and {@code deviceId} — are null: their environment
+ * variables are not read at all, so a client that only feeds Home Assistant needs nothing about
+ * the server in its .env.
+ */
 @Builder
 public record UpsClientConfig(
+        boolean serverEnabled,
         URI serverUri,
         Duration serverConnectTimeout,
         Duration serverRequestTimeout,
@@ -30,11 +37,30 @@ public record UpsClientConfig(
 ) {
 
     public static UpsClientConfig readEnv() {
+        boolean serverEnabled = requiredBoolean("SERVER_ENABLED");
+
         return UpsClientConfig.builder()
-                .serverUri(requiredHttpUri("SERVER_URL"))
-                .serverConnectTimeout(requiredPositiveSeconds("SERVER_CONNECT_TIMEOUT_SECONDS"))
-                .serverRequestTimeout(requiredPositiveSeconds("SERVER_REQUEST_TIMEOUT_SECONDS"))
-                .deviceId(required("DEVICE_ID"))
+                .serverEnabled(serverEnabled)
+                .serverUri(
+                        serverEnabled
+                                ? requiredHttpUri("SERVER_URL")
+                                : null
+                )
+                .serverConnectTimeout(
+                        serverEnabled
+                                ? requiredPositiveSeconds("SERVER_CONNECT_TIMEOUT_SECONDS")
+                                : null
+                )
+                .serverRequestTimeout(
+                        serverEnabled
+                                ? requiredPositiveSeconds("SERVER_REQUEST_TIMEOUT_SECONDS")
+                                : null
+                )
+                .deviceId(
+                        serverEnabled
+                                ? required("DEVICE_ID")
+                                : null
+                )
                 .nutHost(required("NUT_HOST"))
                 .nutPort(requiredPort("NUT_PORT"))
                 .nutUpsName(required("NUT_UPS_NAME"))
@@ -85,6 +111,22 @@ public record UpsClientConfig(
             throw new IllegalArgumentException("environment variable " + name + " is missing");
         }
         return value.trim();
+    }
+
+    /**
+     * Only "true" and "false" are accepted. {@code Boolean.parseBoolean} reads everything else as
+     * false, so a typo would silently turn the setting off instead of naming itself at startup.
+     */
+    private static boolean requiredBoolean(String name) {
+        String value = required(name);
+
+        if ("true".equalsIgnoreCase(value)) {
+            return true;
+        }
+        if ("false".equalsIgnoreCase(value)) {
+            return false;
+        }
+        throw new IllegalArgumentException(name + " must be true or false, got " + value);
     }
 
     private static URI requiredHttpUri(String name) {

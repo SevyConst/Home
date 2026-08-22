@@ -17,8 +17,8 @@ import java.util.concurrent.ThreadFactory;
 import java.util.concurrent.TimeUnit;
 
 /**
- * Starts its three working threads: one reading the UPS, one sending to Home Assistant, and one
- * sending the heartbeat to the server.
+ * Starts its working threads: one reading the UPS, one sending to Home Assistant, and — unless
+ * SERVER_ENABLED is false — one sending the heartbeat to the server.
  */
 @Slf4j
 public class Main {
@@ -28,17 +28,10 @@ public class Main {
 
         log.info("Configuration: {}", upsClientConfig);
 
-        EventSender eventSender = new EventSender(upsClientConfig);
-
-        Clock clock = Clock.systemDefaultZone();
-        ServerReporter reporter = new ServerReporter(eventSender, upsClientConfig.deviceId(), clock);
-
         HaPublisher publisher = new HaPublisher(upsClientConfig);
 
         NutClient nutClient = new NutClient(upsClientConfig);
 
-        ScheduledExecutorService pingExecutor =
-                Executors.newSingleThreadScheduledExecutor(threadFactory("server-ping"));
         ScheduledExecutorService pollerExecutor =
                 Executors.newSingleThreadScheduledExecutor(threadFactory("ups-poller"));
 
@@ -52,14 +45,12 @@ public class Main {
         );
 
         haExecutor.execute(exitOnFailure("Sending to HA", publisher));
-        pingExecutor.execute(exitOnFailure("Sending START", reporter::sendStart));
 
-        pingExecutor.scheduleWithFixedDelay(
-                exitOnFailure("Sending PING", reporter::sendPing),
-                ConstantsKt.PING_PERIOD_MILLISECONDS,
-                ConstantsKt.PING_PERIOD_MILLISECONDS,
-                TimeUnit.MILLISECONDS
-        );
+        if (upsClientConfig.serverEnabled()) {
+            startServerReporting(upsClientConfig);
+        } else {
+            log.info("SERVER_ENABLED is false: nothing is sent to the server");
+        }
 
         pollerExecutor.scheduleWithFixedDelay(
                 exitOnFailure("Polling the UPS", poller::tick),
@@ -69,11 +60,31 @@ public class Main {
         );
 
         log.info(
-                "Started: polling {} every {}, reporting to {}",
+                "Started: polling {} every {}",
                 upsClientConfig.nutUpsName(),
-                upsClientConfig.upsPollPeriod(),
-                upsClientConfig.serverUri()
+                upsClientConfig.upsPollPeriod()
         );
+    }
+
+    private static void startServerReporting(UpsClientConfig upsClientConfig) {
+        EventSender eventSender = new EventSender(upsClientConfig);
+
+        Clock clock = Clock.systemDefaultZone();
+        ServerReporter reporter = new ServerReporter(eventSender, upsClientConfig.deviceId(), clock);
+
+        ScheduledExecutorService pingExecutor =
+                Executors.newSingleThreadScheduledExecutor(threadFactory("server-ping"));
+
+        pingExecutor.execute(exitOnFailure("Sending START", reporter::sendStart));
+
+        pingExecutor.scheduleWithFixedDelay(
+                exitOnFailure("Sending PING", reporter::sendPing),
+                ConstantsKt.PING_PERIOD_MILLISECONDS,
+                ConstantsKt.PING_PERIOD_MILLISECONDS,
+                TimeUnit.MILLISECONDS
+        );
+
+        log.info("Reporting to {}", upsClientConfig.serverUri());
     }
 
     private static Runnable exitOnFailure(String description, Runnable task) {
