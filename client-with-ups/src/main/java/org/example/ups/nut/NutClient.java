@@ -22,6 +22,12 @@ public class NutClient {
 
     private static final double SECONDS_PER_MINUTE = 60.0;
 
+    /**
+     * How many of the first successful reads are logged variable by variable, so a fresh
+     * installation shows what this UPS actually reports before the log goes quiet.
+     */
+    private static final int LOGGED_READS = 10;
+
     private final String host;
     private final int port;
     private final String upsName;
@@ -36,6 +42,9 @@ public class NutClient {
 
     /** Whether the current run of failed reads has already been reported. */
     private boolean readFailureReported;
+
+    /** How many successful reads have been logged in full so far. */
+    private int loggedReads;
 
     public NutClient(UpsClientConfig upsClientConfig) {
         this.host = upsClientConfig.nutHost();
@@ -78,6 +87,8 @@ public class NutClient {
 
         String prefix = "VAR " + upsName + " ";
         String end = "END LIST VAR " + upsName;
+        boolean logging = loggedReads < LOGGED_READS;
+        StringBuilder logged = new StringBuilder();
         UpsSnapshot snapshot = new UpsSnapshot();
         for (String line = readLine(); !line.equals(end); line = readLine()) {
             if (!line.startsWith(prefix)) {
@@ -88,33 +99,31 @@ public class NutClient {
             if (space < 0) {
                 throw new IOException("malformed VAR line: " + line);
             }
-            variable(snapshot, rest.substring(0, space), unescape(rest.substring(space + 1)));
+            String name = rest.substring(0, space);
+            String value = unescape(rest.substring(space + 1));
+            if (logging) {
+                logged.append("\n    ").append(name).append(" = ").append(value);
+            }
+
+            switch (name) {
+                case "ups.status" -> snapshot.setStatus(UpsStatus.from(value));
+                case "input.voltage" -> snapshot.setInputVoltage(number(value));
+                case "output.voltage" -> snapshot.setOutputVoltage(number(value));
+                case "input.frequency" -> snapshot.setInputFrequency(number(value));
+                case "ups.load" -> snapshot.setLoadPercent(number(value));
+                case "battery.charge" -> snapshot.setBatteryCharge(number(value));
+                case "battery.runtime" -> snapshot.setBatteryRuntimeMinutes(minutes(number(value)));
+                case "battery.voltage" -> snapshot.setBatteryVoltage(number(value));
+                case "ups.beeper.status" -> snapshot.setBeeper(text(value));
+                case "ups.test.result" -> snapshot.setTestResult(text(value));
+            }
+        }
+
+        if (logging) {
+            loggedReads++;
+            log.info("Read {} of {} from the UPS:{}", loggedReads, LOGGED_READS, logged);
         }
         return snapshot;
-    }
-
-    /**
-     * Places one {@code LIST VAR} line in the snapshot. A variable this client does not watch is
-     * ignored, and so is one whose value does not read as a number: an unusable reading is the
-     * same as an absent one.
-     */
-    private static void variable(
-            UpsSnapshot snapshot,
-            String name,
-            String value
-    ) {
-        switch (name) {
-            case "ups.status" -> snapshot.setStatus(UpsStatus.from(value));
-            case "input.voltage" -> snapshot.setInputVoltage(number(value));
-            case "output.voltage" -> snapshot.setOutputVoltage(number(value));
-            case "input.frequency" -> snapshot.setInputFrequency(number(value));
-            case "ups.load" -> snapshot.setLoadPercent(number(value));
-            case "battery.charge" -> snapshot.setBatteryCharge(number(value));
-            case "battery.runtime" -> snapshot.setBatteryRuntimeMinutes(minutes(number(value)));
-            case "battery.voltage" -> snapshot.setBatteryVoltage(number(value));
-            case "ups.beeper.status" -> snapshot.setBeeper(text(value));
-            case "ups.test.result" -> snapshot.setTestResult(text(value));
-        }
     }
 
     private static OptionalDouble minutes(OptionalDouble seconds) {
