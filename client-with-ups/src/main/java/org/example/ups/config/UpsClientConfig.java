@@ -28,6 +28,7 @@ public record UpsClientConfig(
         Duration haConnectTimeout,
         Duration haRequestTimeout,
         int haInitBackoffMilliseconds,
+        int haWarnFailedDeliveries,
         Duration haHeartbeatPeriod,
         Thresholds inputVoltage,
         Thresholds outputVoltage,
@@ -71,6 +72,7 @@ public record UpsClientConfig(
                 .haConnectTimeout(requiredPositiveSeconds("HA_CONNECT_TIMEOUT_SECONDS"))
                 .haRequestTimeout(requiredPositiveSeconds("HA_REQUEST_TIMEOUT_SECONDS"))
                 .haInitBackoffMilliseconds(requiredPositiveInt("HA_BACKOFF_MILLISECONDS"))
+                .haWarnFailedDeliveries(requiredPositiveInt("HA_WARN_FAILED_DELIVERIES"))
                 .haHeartbeatPeriod(requiredPositiveSeconds("HA_HEARTBEAT_PERIOD_SECONDS"))
                 .inputVoltage(
                         new Thresholds(

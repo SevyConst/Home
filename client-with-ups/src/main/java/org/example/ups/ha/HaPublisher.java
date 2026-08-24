@@ -24,6 +24,11 @@ public class HaPublisher implements Runnable {
     private final HttpClient httpClient;
     private final int initBackoffMilliseconds;
 
+    /**
+     * How many failures in a row are worth a WARN each
+     */
+    private final int warnFailedDeliveries;
+
     @Getter
     private final BlockingQueue<String> payloadBlockingQueueOneElement = new ArrayBlockingQueue<>(1);
 
@@ -41,6 +46,7 @@ public class HaPublisher implements Runnable {
         this.webhookUri = upsClientConfig.haWebhookUri();
         this.requestTimeout = upsClientConfig.haRequestTimeout();
         this.initBackoffMilliseconds = upsClientConfig.haInitBackoffMilliseconds();
+        this.warnFailedDeliveries = upsClientConfig.haWarnFailedDeliveries();
         this.httpClient = HttpClient.newBuilder()
                 .connectTimeout(upsClientConfig.haConnectTimeout())
                 .build();
@@ -100,7 +106,7 @@ public class HaPublisher implements Runnable {
             noteDeliveryFailed("it answered " + status);
             return false;
         } catch (IOException e) {
-            noteDeliveryFailed("cannot reach it at " + webhookUri, e);
+            noteDeliveryFailed("cannot reach it at " + webhookUri + ", payload: '" + json + "'", e);
             return false;
         }
     }
@@ -110,15 +116,9 @@ public class HaPublisher implements Runnable {
         noteDeliveryFailed(detail, null);
     }
 
-    /**
-     * The throwable is what carries the reason when there was no answer at all, and it has to be
-     * logged rather than flattened into the message: {@code ConnectException} — a refused port,
-     * the commonest way this fails — has no message of its own, so a line built from
-     * {@code getMessage()} ends in the word "null" and names no cause at all.
-     */
     private void noteDeliveryFailed(String detail, IOException cause) {
         failedDeliveriesInARow++;
-        if (failedDeliveriesInARow == 1) {
+        if (failedDeliveriesInARow <= warnFailedDeliveries) {
             log.warn("Could not deliver to Home Assistant, will retry: {}", detail, cause);
         } else {
             log.debug(
