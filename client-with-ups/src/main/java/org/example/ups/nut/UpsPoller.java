@@ -49,7 +49,6 @@ public class UpsPoller {
         this.stateMachine = new StateMachine(
                 upsClientConfig.inputVoltage(),
                 upsClientConfig.outputVoltage(),
-                upsClientConfig.frequency(),
                 upsClientConfig.load(),
                 upsClientConfig.battery()
         );

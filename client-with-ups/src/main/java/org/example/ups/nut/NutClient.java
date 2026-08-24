@@ -109,13 +109,10 @@ public class NutClient {
                 case "ups.status" -> snapshot.setStatus(UpsStatus.from(value));
                 case "input.voltage" -> snapshot.setInputVoltage(number(value));
                 case "output.voltage" -> snapshot.setOutputVoltage(number(value));
-                case "input.frequency" -> snapshot.setInputFrequency(number(value));
                 case "ups.load" -> snapshot.setLoadPercent(number(value));
                 case "battery.charge" -> snapshot.setBatteryCharge(number(value));
                 case "battery.runtime" -> snapshot.setBatteryRuntimeMinutes(minutes(number(value)));
-                case "battery.voltage" -> snapshot.setBatteryVoltage(number(value));
                 case "ups.beeper.status" -> snapshot.setBeeper(text(value));
-                case "ups.test.result" -> snapshot.setTestResult(text(value));
             }
         }
 

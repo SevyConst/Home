@@ -10,7 +10,6 @@ public class StateMachine {
 
     private final Band inputVoltage;
     private final Band outputVoltage;
-    private final Band frequency;
     private final Band load;
     private final Band battery;
 
@@ -27,14 +26,12 @@ public class StateMachine {
     public StateMachine(
             Thresholds inputVoltage,
             Thresholds outputVoltage,
-            Thresholds frequency,
             Thresholds load,
             Thresholds battery
     ) {
 
         this.inputVoltage = new Band(inputVoltage);
         this.outputVoltage = new Band(outputVoltage);
-        this.frequency = new Band(frequency);
         this.load = new Band(load);
         this.battery = new Band(battery);
     }
@@ -57,7 +54,6 @@ public class StateMachine {
 
         if (mainsPresentNow && !mainsSwitched) {
             changed |= inputVoltage.observe(snapshot.getInputVoltage());
-            changed |= frequency.observe(snapshot.getInputFrequency());
         }
 
         changed |= outputVoltage.observe(snapshot.getOutputVoltage());

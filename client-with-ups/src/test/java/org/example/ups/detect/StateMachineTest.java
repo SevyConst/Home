@@ -16,7 +16,6 @@ class StateMachineTest {
         return new StateMachine(
                 new Thresholds(200.0, 245.0),
                 new Thresholds(200.0, 245.0),
-                new Thresholds(49.0, 51.0),
                 new Thresholds(0.0, 80.0),
                 new Thresholds(30.0, 100.0)
         );
@@ -27,7 +26,6 @@ class StateMachineTest {
                 UpsStatus.ONLINE,
                 volts,
                 230.0,
-                50.0,
                 20.0,
                 100.0
         );
@@ -39,7 +37,6 @@ class StateMachineTest {
                 UpsStatus.ONLINE,
                 230.0,
                 volts,
-                50.0,
                 20.0,
                 100.0
         );
@@ -55,7 +52,6 @@ class StateMachineTest {
                 UpsStatus.ON_BATTERY,
                 0.0,
                 volts,
-                0.0,
                 20.0,
                 100.0
         );
@@ -72,7 +68,6 @@ class StateMachineTest {
                 UpsStatus.ONLINE,
                 0.0,
                 volts,
-                0.0,
                 20.0,
                 100.0
         );
@@ -84,7 +79,6 @@ class StateMachineTest {
                 UpsStatus.UNKNOWN,
                 230.0,
                 230.0,
-                50.0,
                 20.0,
                 100.0
         );
@@ -95,7 +89,6 @@ class StateMachineTest {
                 UpsStatus.ONLINE,
                 230.0,
                 230.0,
-                50.0,
                 load,
                 100.0
         );
@@ -106,7 +99,6 @@ class StateMachineTest {
                 UpsStatus.ONLINE,
                 230.0,
                 230.0,
-                50.0,
                 20.0,
                 charge
         );
@@ -118,7 +110,6 @@ class StateMachineTest {
         snapshot.setStatus(UpsStatus.ONLINE);
         snapshot.setInputVoltage(OptionalDouble.of(230.0));
         snapshot.setOutputVoltage(OptionalDouble.of(230.0));
-        snapshot.setInputFrequency(OptionalDouble.of(50.0));
         snapshot.setLoadPercent(OptionalDouble.of(20.0));
         return snapshot;
     }
@@ -129,7 +120,6 @@ class StateMachineTest {
                 UpsStatus.ONLINE,
                 190.0,
                 190.0,
-                47.0,
                 90.0,
                 20.0
         );
@@ -148,7 +138,6 @@ class StateMachineTest {
             UpsStatus status,
             double inputVolts,
             double outputVolts,
-            double frequency,
             double load,
             double charge
     ) {
@@ -156,7 +145,6 @@ class StateMachineTest {
         snapshot.setStatus(status);
         snapshot.setInputVoltage(OptionalDouble.of(inputVolts));
         snapshot.setOutputVoltage(OptionalDouble.of(outputVolts));
-        snapshot.setInputFrequency(OptionalDouble.of(frequency));
         snapshot.setLoadPercent(OptionalDouble.of(load));
         snapshot.setBatteryCharge(OptionalDouble.of(charge));
         return snapshot;
@@ -238,7 +226,6 @@ class StateMachineTest {
                                 UpsStatus.ON_BATTERY,
                                 0.0,
                                 230.0,
-                                0.0,
                                 20.0,
                                 20.0
                         )
@@ -278,7 +265,7 @@ class StateMachineTest {
      * output is the UPS's own inverter, and an outage is exactly when a failing one shows itself.
      *
      * <p>Nothing else on this reading could account for the message: the mains did not switch, and
-     * with them down the input and frequency are not judged at all.
+     * with them down the input is not judged at all.
      */
     @Test
     void outputIsJudgedWhileTheMainsAreDown() {
@@ -318,26 +305,6 @@ class StateMachineTest {
         assertFalse(machine.observe(withLoad(61.0)));
     }
 
-    @Test
-    void frequencyIsWatchedTheSameWayAsInputVoltage() {
-        StateMachine machine = machine();
-        machine.observe(online(230.0));
-
-        assertTrue(
-                machine.observe(
-                        snapshot(
-                                UpsStatus.ONLINE,
-                                230.0,
-                                230.0,
-                                47.0,
-                                20.0,
-                                100.0
-                        )
-                )
-        );
-        assertTrue(machine.observe(online(230.0)));
-    }
-
     /**
      * All four ranges are folded in on every reading, whatever the ones before them reported. The
      * repeat is what shows it: a {@code ||} chain would stop at the first parameter to change and
@@ -355,8 +322,8 @@ class StateMachineTest {
 
     /**
      * A reading that moved without leaving its range is not news. Every message carries the whole
-     * snapshot, so the new value travels with the next one anyway — and battery runtime and
-     * battery voltage are not watched here at all, for the same reason.
+     * snapshot, so the new value travels with the next one anyway — and battery runtime is not
+     * watched here at all, for the same reason.
      */
     @Test
     void readingsThatMoveInsideTheirRangesAreNotWorthAMessage() {
@@ -365,24 +332,20 @@ class StateMachineTest {
                 UpsStatus.ONLINE,
                 230.0,
                 230.0,
-                50.0,
                 20.0,
                 100.0
         );
         first.setBatteryRuntimeMinutes(OptionalDouble.of(50.0));
-        first.setBatteryVoltage(OptionalDouble.of(13.6));
         machine.observe(first);
 
         UpsSnapshot second = snapshot(
                 UpsStatus.ONLINE,
                 228.0,
                 230.0,
-                49.9,
                 23.0,
                 97.0
         );
         second.setBatteryRuntimeMinutes(OptionalDouble.of(25.0));
-        second.setBatteryVoltage(OptionalDouble.of(13.2));
 
         assertFalse(machine.observe(second));
     }

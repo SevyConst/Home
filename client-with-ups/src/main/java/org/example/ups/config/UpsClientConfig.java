@@ -32,7 +32,6 @@ public record UpsClientConfig(
         Duration haHeartbeatPeriod,
         Thresholds inputVoltage,
         Thresholds outputVoltage,
-        Thresholds frequency,
         Thresholds load,
         Thresholds battery
 ) {
@@ -84,12 +83,6 @@ public record UpsClientConfig(
                         new Thresholds(
                                 requiredDouble("OUTPUT_VOLTAGE_MIN"),
                                 requiredDouble("OUTPUT_VOLTAGE_MAX")
-                        )
-                )
-                .frequency(
-                        new Thresholds(
-                                requiredDouble("FREQUENCY_MIN"),
-                                requiredDouble("FREQUENCY_MAX")
                         )
                 )
                 .load(

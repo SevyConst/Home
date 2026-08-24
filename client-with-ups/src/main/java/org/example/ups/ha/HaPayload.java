@@ -22,14 +22,11 @@ public class HaPayload {
 
         fields.put("input_voltage", number(snapshot.getInputVoltage()));
         fields.put("output_voltage", number(snapshot.getOutputVoltage()));
-        fields.put("input_frequency", number(snapshot.getInputFrequency()));
         fields.put("load_percent", number(snapshot.getLoadPercent()));
         fields.put("battery_charge", number(snapshot.getBatteryCharge()));
         fields.put("battery_runtime_min", number(snapshot.getBatteryRuntimeMinutes()));
-        fields.put("battery_voltage", number(snapshot.getBatteryVoltage()));
 
         fields.put("beeper", text(snapshot.getBeeper()));
-        fields.put("test_result", text(snapshot.getTestResult()));
 
         return Json.Default.encodeToString(
                 JsonObject.Companion.serializer(),
