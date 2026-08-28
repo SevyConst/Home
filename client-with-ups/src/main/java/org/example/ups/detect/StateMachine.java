@@ -1,5 +1,6 @@
 package org.example.ups.detect;
 
+import lombok.Getter;
 import org.example.ups.config.Thresholds;
 import org.example.ups.nut.UpsSnapshot;
 import org.example.ups.nut.UpsStatus;
@@ -23,6 +24,13 @@ public class StateMachine {
      */
     private Boolean mainsPresent;
 
+    /**
+     * Whether the reading last passed to {@link #observe} took the input voltage out of its band —
+     * the one event the caller repeats rather than announces once.
+     */
+    @Getter
+    private boolean inputVoltageNewlyOutOfRange;
+
     public StateMachine(
             Thresholds inputVoltage,
             Thresholds outputVoltage,
@@ -36,10 +44,9 @@ public class StateMachine {
         this.battery = new Band(battery);
     }
 
-    /**
-     * @return whether anything changed, which is all the caller branches on
-     */
     public boolean observe(UpsSnapshot snapshot) {
+        inputVoltageNewlyOutOfRange = false;
+
         UpsStatus status = snapshot.getStatus();
         boolean changed = status != shown;
         shown = status;
@@ -54,6 +61,7 @@ public class StateMachine {
 
         if (mainsPresentNow && !mainsSwitched) {
             changed |= inputVoltage.observe(snapshot.getInputVoltage());
+            inputVoltageNewlyOutOfRange = inputVoltage.newlyOutOfRange;
         }
 
         changed |= outputVoltage.observe(snapshot.getOutputVoltage());
@@ -73,12 +81,21 @@ public class StateMachine {
         /** Which side of the band the last message about this parameter reported */
         private boolean outOfRange;
 
+        /**
+         * Whether the last reading is the one that took this parameter out of the band. One of the
+         * two crossings only, which is what tells it apart from {@link #observe}'s answer: that one
+         * folds both directions, and the reading disappearing, into a single "worth a message".
+         */
+        private boolean newlyOutOfRange;
+
         private Band(Thresholds thresholds) {
             this.thresholds = thresholds;
         }
 
         /** @return whether this reading is worth a message about this parameter */
         private boolean observe(OptionalDouble reading) {
+            newlyOutOfRange = false;
+
             boolean absentNow = reading.isEmpty();
             boolean changed = absentNow != absent;
             absent = absentNow;
@@ -90,6 +107,7 @@ public class StateMachine {
             boolean outOfRangeNow = thresholds.isOutOfRange(reading.getAsDouble());
             if (outOfRangeNow != outOfRange) {
                 outOfRange = outOfRangeNow;
+                newlyOutOfRange = outOfRangeNow;
                 changed = true;
             }
 

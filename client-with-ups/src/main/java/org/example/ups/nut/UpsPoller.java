@@ -6,15 +6,17 @@ import org.example.ups.ha.HaPayload;
 import org.example.ups.ha.HaPublisher;
 
 import java.time.Duration;
-import java.util.Map;
-import java.util.Optional;
 import java.util.function.LongSupplier;
 
 /**
  * The loop: read the UPS, work out what changed, and hand the result to Home Assistant.
  *
- * <p>A tick publishes for one of two reasons: the state machine saw something change, or the
- * heartbeat period has come round. Every message carries a full snapshot.
+ * <p>A tick publishes for one of three reasons: the state machine saw something change, the
+ * heartbeat period has come round, or a burst is owing. Every message carries a full snapshot.
+ *
+ * <p>The burst is what the input voltage leaving its band gets instead of the single message
+ * everything else gets: {@code INPUT_VOLTAGE_BURST_MESSAGES} of them,
+ * {@code INPUT_VOLTAGE_BURST_PERIOD_SECONDS} apart. Only that direction, and only that parameter.
  *
  * <p>The cadence is measured on a monotonic source, not on the wall clock. Because the Pi has no
  * RTC. No wall clock reaches this class at all: a reading carries no time, and Home Assistant
@@ -27,10 +29,17 @@ public class UpsPoller {
     private final StateMachine stateMachine;
     private final HaPublisher haPublisher;
     private final Duration heartbeatPeriod;
+    private final int burstMessages;
+    private final Duration burstPeriod;
     private final LongSupplier nanoTime;
 
     private boolean anythingSent;
     private long lastSentNanos;
+
+    /**
+     * How many messages of the current burst are still owed, the one going out now included.
+     */
+    private int burstRemaining;
 
     /**
      * {@code nanoTime} is the seam the tests use to move the monotonic source by hand rather than
@@ -54,6 +63,8 @@ public class UpsPoller {
         );
         this.haPublisher = haPublisher;
         this.heartbeatPeriod = upsClientConfig.haHeartbeatPeriod();
+        this.burstMessages = upsClientConfig.inputVoltageBurstMessages();
+        this.burstPeriod = upsClientConfig.inputVoltageBurstPeriod();
         this.nanoTime = nanoTime;
     }
 
@@ -65,21 +76,41 @@ public class UpsPoller {
         UpsSnapshot snapshot = pollOnce();
 
         long currentNanos = nanoTime.getAsLong();
-        if (stateMachine.observe(snapshot) || heartbeatIsDue(currentNanos)) {
+
+        boolean changed = stateMachine.observe(snapshot);
+        if (stateMachine.isInputVoltageNewlyOutOfRange()) {
+            burstRemaining = burstMessages;
+        }
+
+        if (changed || burstIsDue(currentNanos) || heartbeatIsDue(currentNanos)) {
             publish(snapshot);
             anythingSent = true;
 
             lastSentNanos = currentNanos;
+            if (burstRemaining > 0) {
+                burstRemaining--;
+            }
         }
     }
 
+    /**
+     * The heartbeat needs no separate holding off during a burst: a burst message is a message like
+     * any other, and moves {@link #lastSentNanos} with it.
+     */
     private boolean heartbeatIsDue(long currentNanos) {
         if (!anythingSent) {
             return true;
         }
 
-        Duration sinceLastSent = Duration.ofNanos(currentNanos - lastSentNanos);
-        return sinceLastSent.compareTo(heartbeatPeriod) >= 0;
+        return sinceLastSent(currentNanos).compareTo(heartbeatPeriod) >= 0;
+    }
+
+    private boolean burstIsDue(long currentNanos) {
+        return burstRemaining > 0 && sinceLastSent(currentNanos).compareTo(burstPeriod) >= 0;
+    }
+
+    private Duration sinceLastSent(long currentNanos) {
+        return Duration.ofNanos(currentNanos - lastSentNanos);
     }
 
     private void publish(UpsSnapshot snapshot) {

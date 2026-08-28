@@ -30,6 +30,8 @@ public record UpsClientConfig(
         int haInitBackoffMilliseconds,
         int haWarnFailedDeliveries,
         Duration haHeartbeatPeriod,
+        int inputVoltageBurstMessages,
+        Duration inputVoltageBurstPeriod,
         Thresholds inputVoltage,
         Thresholds outputVoltage,
         Thresholds load,
@@ -73,6 +75,8 @@ public record UpsClientConfig(
                 .haInitBackoffMilliseconds(requiredPositiveInt("HA_BACKOFF_MILLISECONDS"))
                 .haWarnFailedDeliveries(requiredPositiveInt("HA_WARN_FAILED_DELIVERIES"))
                 .haHeartbeatPeriod(requiredPositiveSeconds("HA_HEARTBEAT_PERIOD_SECONDS"))
+                .inputVoltageBurstMessages(requiredPositiveInt("INPUT_VOLTAGE_BURST_MESSAGES"))
+                .inputVoltageBurstPeriod(requiredPositiveSeconds("INPUT_VOLTAGE_BURST_PERIOD_SECONDS"))
                 .inputVoltage(
                         new Thresholds(
                                 requiredDouble("INPUT_VOLTAGE_MIN"),
