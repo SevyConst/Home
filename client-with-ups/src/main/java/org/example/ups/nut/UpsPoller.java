@@ -68,12 +68,8 @@ public class UpsPoller {
         this.nanoTime = nanoTime;
     }
 
-    private UpsSnapshot pollOnce() {
-        return nutClient.tryRead().orElseGet(UpsSnapshot::unreachable);
-    }
-
     public void tick() {
-        UpsSnapshot snapshot = pollOnce();
+        UpsSnapshot snapshot = nutClient.tryRead();
 
         long currentNanos = nanoTime.getAsLong();
 

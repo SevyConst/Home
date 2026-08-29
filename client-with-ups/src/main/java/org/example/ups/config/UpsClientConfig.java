@@ -23,6 +23,7 @@ public record UpsClientConfig(
         String nutUpsName,
         int nutConnectTimeoutMilliseconds,
         int nutReadTimeoutMilliseconds,
+        int nutWarnFailedReads,
         Duration upsPollPeriod,
         URI haWebhookUri,
         Duration haConnectTimeout,
@@ -68,6 +69,7 @@ public record UpsClientConfig(
                 .nutUpsName(required("NUT_UPS_NAME"))
                 .nutConnectTimeoutMilliseconds(requiredPositiveInt("NUT_CONNECT_TIMEOUT_MILLISECONDS"))
                 .nutReadTimeoutMilliseconds(requiredPositiveInt("NUT_READ_TIMEOUT_MILLISECONDS"))
+                .nutWarnFailedReads(requiredPositiveInt("NUT_WARN_FAILED_READS"))
                 .upsPollPeriod(requiredPositiveMilliseconds("UPS_POLL_PERIOD_MILLISECONDS"))
                 .haWebhookUri(requiredHttpUri("HA_WEBHOOK_URL"))
                 .haConnectTimeout(requiredPositiveSeconds("HA_CONNECT_TIMEOUT_SECONDS"))

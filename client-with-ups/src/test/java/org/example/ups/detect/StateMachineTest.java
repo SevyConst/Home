@@ -134,6 +134,13 @@ class StateMachineTest {
         return snapshot;
     }
 
+    /** What {@code NutClient} hands on when it could not read the UPS at all. */
+    private UpsSnapshot unreachable() {
+        UpsSnapshot snapshot = new UpsSnapshot();
+        snapshot.setStatus(UpsStatus.UNREACHABLE);
+        return snapshot;
+    }
+
     private UpsSnapshot snapshot(
             UpsStatus status,
             double inputVolts,
@@ -409,8 +416,8 @@ class StateMachineTest {
         StateMachine machine = machine();
         machine.observe(online(230.0));
 
-        assertTrue(machine.observe(UpsSnapshot.unreachable()));
-        assertFalse(machine.observe(UpsSnapshot.unreachable()));
+        assertTrue(machine.observe(unreachable()));
+        assertFalse(machine.observe(unreachable()));
         assertTrue(machine.observe(online(230.0)));
     }
 
@@ -436,7 +443,7 @@ class StateMachineTest {
     void upsThatComesBackWithoutAReadableStatusIsStillShownAsReachable() {
         StateMachine machine = machine();
         machine.observe(online(230.0));
-        machine.observe(UpsSnapshot.unreachable());
+        machine.observe(unreachable());
 
         assertTrue(machine.observe(unreadableStatus()));
     }
@@ -454,7 +461,7 @@ class StateMachineTest {
     void outageIsStillSeenWhenItStraddlesAGapInTheReadings() {
         StateMachine machine = machine();
         machine.observe(online(230.0));
-        machine.observe(UpsSnapshot.unreachable());
+        machine.observe(unreachable());
 
         assertTrue(machine.observe(onBattery()));
         assertTrue(machine.observe(online(230.0)));

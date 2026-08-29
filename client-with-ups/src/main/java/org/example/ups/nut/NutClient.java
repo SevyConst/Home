@@ -36,12 +36,19 @@ public class NutClient {
 
     private final int readTimeoutMilliseconds;
 
+    /**
+     * How many failures in a row are worth a WARN each
+     */
+    private final int warnFailedReads;
+
     private Socket socket;
     private BufferedReader reader;
     private Writer writer;
 
-    /** Whether the current run of failed reads has already been reported. */
-    private boolean readFailureReported;
+    /**
+     * How many reads have failed since the last one that succeeded
+     */
+    private long failedReadsInARow;
 
     /** How many successful reads have been logged in full so far. */
     private int loggedReads;
@@ -52,22 +59,40 @@ public class NutClient {
         this.upsName = upsClientConfig.nutUpsName();
         this.connectTimeoutMilliseconds = upsClientConfig.nutConnectTimeoutMilliseconds();
         this.readTimeoutMilliseconds = upsClientConfig.nutReadTimeoutMilliseconds();
+        this.warnFailedReads = upsClientConfig.nutWarnFailedReads();
     }
 
-    public Optional<UpsSnapshot> tryRead() {
+    public UpsSnapshot tryRead() {
         try {
             UpsSnapshot snapshot = read();
-            readFailureReported = false;
-            return Optional.of(snapshot);
+            noteReadSucceeded();
+            return snapshot;
         } catch (IOException e) {
             dropConnection();
+            noteReadFailed(e);
+            UpsSnapshot snapshot = new UpsSnapshot();
+            snapshot.setStatus(UpsStatus.UNREACHABLE);
+            return snapshot;
+        }
+    }
 
-            if (!readFailureReported) {
-                readFailureReported = true;
-                log.warn("Could not read the UPS", e);
-            }
+    private void noteReadFailed(IOException cause) {
+        failedReadsInARow++;
+        if (failedReadsInARow <= warnFailedReads) {
+            log.warn("Could not read the UPS", cause);
+        } else {
+            log.debug(
+                    "The UPS still cannot be read, {} attempts in a row",
+                    failedReadsInARow,
+                    cause
+            );
+        }
+    }
 
-            return Optional.empty();
+    private void noteReadSucceeded() {
+        if (failedReadsInARow > 0) {
+            log.warn("The UPS can be read again after {} failed attempts", failedReadsInARow);
+            failedReadsInARow = 0;
         }
     }
 

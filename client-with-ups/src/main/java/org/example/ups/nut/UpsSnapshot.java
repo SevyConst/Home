@@ -18,10 +18,4 @@ public class UpsSnapshot {
     private OptionalDouble batteryCharge = OptionalDouble.empty();
     private OptionalDouble batteryRuntimeMinutes = OptionalDouble.empty();
     private Optional<String> beeper = Optional.empty();
-
-    public static UpsSnapshot unreachable() {
-        UpsSnapshot snapshot = new UpsSnapshot();
-        snapshot.setStatus(UpsStatus.UNREACHABLE);
-        return snapshot;
-    }
 }

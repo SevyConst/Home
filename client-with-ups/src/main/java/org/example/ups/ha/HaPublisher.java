@@ -103,17 +103,12 @@ public class HaPublisher implements Runnable {
                 return true;
             }
 
-            noteDeliveryFailed("it answered " + status);
+            noteDeliveryFailed("it answered " + status, null);
             return false;
         } catch (IOException e) {
             noteDeliveryFailed("cannot reach it at " + webhookUri + ", payload: '" + json + "'", e);
             return false;
         }
-    }
-
-    /** A Home Assistant that answered, which says everything there is to say by itself. */
-    private void noteDeliveryFailed(String detail) {
-        noteDeliveryFailed(detail, null);
     }
 
     private void noteDeliveryFailed(String detail, IOException cause) {
