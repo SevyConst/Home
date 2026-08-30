@@ -24,6 +24,7 @@ public record UpsClientConfig(
         int nutConnectTimeoutMilliseconds,
         int nutReadTimeoutMilliseconds,
         int nutWarnFailedReads,
+        int nutLoggedReads,
         Duration upsPollPeriod,
         URI haWebhookUri,
         Duration haConnectTimeout,
@@ -70,6 +71,7 @@ public record UpsClientConfig(
                 .nutConnectTimeoutMilliseconds(requiredPositiveInt("NUT_CONNECT_TIMEOUT_MILLISECONDS"))
                 .nutReadTimeoutMilliseconds(requiredPositiveInt("NUT_READ_TIMEOUT_MILLISECONDS"))
                 .nutWarnFailedReads(requiredPositiveInt("NUT_WARN_FAILED_READS"))
+                .nutLoggedReads(requiredNonNegativeInt("NUT_LOGGED_READS"))
                 .upsPollPeriod(requiredPositiveMilliseconds("UPS_POLL_PERIOD_MILLISECONDS"))
                 .haWebhookUri(requiredHttpUri("HA_WEBHOOK_URL"))
                 .haConnectTimeout(requiredPositiveSeconds("HA_CONNECT_TIMEOUT_SECONDS"))
@@ -159,6 +161,17 @@ public record UpsClientConfig(
         int value = requiredInt(name);
         if (value <= 0) {
             throw new IllegalArgumentException(name + " must be positive, got " + value);
+        }
+        return value;
+    }
+
+    /**
+     * Zero is a setting of its own here, not a mistake: it turns off whatever the count switches on.
+     */
+    private static int requiredNonNegativeInt(String name) {
+        int value = requiredInt(name);
+        if (value < 0) {
+            throw new IllegalArgumentException(name + " must not be negative, got " + value);
         }
         return value;
     }

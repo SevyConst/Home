@@ -22,12 +22,6 @@ public class NutClient {
 
     private static final double SECONDS_PER_MINUTE = 60.0;
 
-    /**
-     * How many of the first successful reads are logged variable by variable, so a fresh
-     * installation shows what this UPS actually reports before the log goes quiet.
-     */
-    private static final int LOGGED_READS = 10;
-
     private final String host;
     private final int port;
     private final String upsName;
@@ -41,6 +35,8 @@ public class NutClient {
      */
     private final int warnFailedReads;
 
+    private final int loggedReads;
+
     private Socket socket;
     private BufferedReader reader;
     private Writer writer;
@@ -51,7 +47,7 @@ public class NutClient {
     private long failedReadsInARow;
 
     /** How many successful reads have been logged in full so far. */
-    private int loggedReads;
+    private int loggedReadsSoFar;
 
     public NutClient(UpsClientConfig upsClientConfig) {
         this.host = upsClientConfig.nutHost();
@@ -60,6 +56,7 @@ public class NutClient {
         this.connectTimeoutMilliseconds = upsClientConfig.nutConnectTimeoutMilliseconds();
         this.readTimeoutMilliseconds = upsClientConfig.nutReadTimeoutMilliseconds();
         this.warnFailedReads = upsClientConfig.nutWarnFailedReads();
+        this.loggedReads = upsClientConfig.nutLoggedReads();
     }
 
     public UpsSnapshot tryRead() {
@@ -112,7 +109,7 @@ public class NutClient {
 
         String prefix = "VAR " + upsName + " ";
         String end = "END LIST VAR " + upsName;
-        boolean logging = loggedReads < LOGGED_READS;
+        boolean logging = loggedReadsSoFar < loggedReads;
         StringBuilder logged = new StringBuilder();
         UpsSnapshot snapshot = new UpsSnapshot();
         for (String line = readLine(); !line.equals(end); line = readLine()) {
@@ -142,8 +139,8 @@ public class NutClient {
         }
 
         if (logging) {
-            loggedReads++;
-            log.info("Read {} of {} from the UPS:{}", loggedReads, LOGGED_READS, logged);
+            loggedReadsSoFar++;
+            log.info("Read {} of {} from the UPS:{}", loggedReadsSoFar, loggedReads, logged);
         }
         return snapshot;
     }
